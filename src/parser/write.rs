@@ -244,6 +244,17 @@ fn helper_as_node(helper: &Helper) -> NodeRef {
 }
 
 fn validate_model(model: &Model) -> Result<(), MdlError> {
+    for (geoset_index, geoset) in model.geosets.iter().enumerate() {
+        for (set_index, tex_coords) in geoset.tex_coord_sets.iter().enumerate() {
+            if tex_coords.len() != geoset.vertices.len() {
+                return Err(MdlError::new("mdx-invalid-uv-set-size")
+                    .with_arg("geoset", geoset_index)
+                    .with_arg("set", set_index)
+                    .with_arg("expected", geoset.vertices.len())
+                    .with_arg("actual", tex_coords.len()));
+            }
+        }
+    }
     for bone in &model.bones {
         validate_node(model, &bone_as_node(bone))?;
     }
@@ -695,12 +706,14 @@ fn write_geosets(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError
                 geo.write_u32::<LittleEndian>(0)?;
 
                 geo.write_all(b"UVAS")?;
-                geo.write_u32::<LittleEndian>(1)?;
-                geo.write_all(b"UVBS")?;
-                geo.write_u32::<LittleEndian>(geoset.tex_coords.len() as u32)?;
-                for uv in &geoset.tex_coords {
-                    geo.write_f32::<LittleEndian>(uv.uv[0])?;
-                    geo.write_f32::<LittleEndian>(uv.uv[1])?;
+                geo.write_u32::<LittleEndian>(geoset.tex_coord_sets.len() as u32)?;
+                for tex_coords in &geoset.tex_coord_sets {
+                    geo.write_all(b"UVBS")?;
+                    geo.write_u32::<LittleEndian>(tex_coords.len() as u32)?;
+                    for uv in tex_coords {
+                        geo.write_f32::<LittleEndian>(uv.uv[0])?;
+                        geo.write_f32::<LittleEndian>(uv.uv[1])?;
+                    }
                 }
                 Ok(())
             })?;
@@ -1139,6 +1152,7 @@ fn write_collision(
 mod tests {
     use super::*;
     use crate::model::chunk::UnknownChunk;
+    use crate::model::geoset::{Face, Geoset, Normal, TexCoord, Vertex};
     use crate::model::ids::{MaterialIndex, TextureIndex, TrackId};
     use crate::model::node::{NodeFlags, NodeRef};
     use crate::model::objects::{
@@ -1198,6 +1212,117 @@ mod tests {
         let loaded = crate::parser::load::load(&mut file).expect("reload written MDX");
         fs::remove_file(path).expect("remove temporary MDX");
         loaded
+    }
+
+    fn model_with_uv_sets(tex_coord_sets: Vec<Vec<TexCoord>>) -> Model {
+        Model {
+            name: "multi UV regression".to_string(),
+            geosets: vec![Geoset {
+                vertices: vec![
+                    Vertex {
+                        position: [0.0, 0.0, 0.0],
+                    },
+                    Vertex {
+                        position: [1.0, 0.0, 0.0],
+                    },
+                    Vertex {
+                        position: [0.0, 1.0, 0.0],
+                    },
+                ],
+                normals: vec![
+                    Normal {
+                        normal: [0.0, 0.0, 1.0]
+                    };
+                    3
+                ],
+                tex_coord_sets,
+                faces: vec![Face {
+                    vertices: [0, 1, 2],
+                }],
+                material_id: Some(0),
+                vertex_groups: vec![0, 0, 0],
+                ..Geoset::default()
+            }],
+            ..Model::default()
+        }
+    }
+
+    #[test]
+    fn zero_one_and_two_uv_sets_survive_full_mdx_round_trip() {
+        let first = vec![
+            TexCoord { uv: [0.0, 0.0] },
+            TexCoord { uv: [1.0, 0.0] },
+            TexCoord { uv: [0.0, 1.0] },
+        ];
+        let second = vec![
+            TexCoord { uv: [0.25, 0.75] },
+            TexCoord { uv: [0.5, 0.5] },
+            TexCoord { uv: [0.75, 0.25] },
+        ];
+
+        for sets in [vec![], vec![first.clone()], vec![first, second]] {
+            let model = model_with_uv_sets(sets);
+            let reloaded = round_trip(&model);
+            assert_models_equal(&reloaded, &model, "UVAS/UVBS round trip");
+        }
+    }
+
+    #[test]
+    fn invalid_uv_set_size_does_not_overwrite_or_create_mdx_targets() {
+        let mut model = model_with_uv_sets(vec![vec![
+            TexCoord { uv: [0.0, 0.0] },
+            TexCoord { uv: [1.0, 0.0] },
+        ]]);
+        let err = serialize(&model).expect_err("UV set is shorter than vertices");
+        assert_eq!(err.key, "mdx-invalid-uv-set-size");
+
+        let existing = temp_path("invalid-uv-existing");
+        let missing = temp_path("invalid-uv-missing");
+        let _ = fs::remove_file(&missing);
+        fs::write(&existing, b"keep me").unwrap();
+        assert!(save_path(&existing, &model).is_err());
+        assert_eq!(fs::read(&existing).unwrap(), b"keep me");
+        assert!(save_path(&missing, &model).is_err());
+        assert!(!missing.exists());
+        fs::remove_file(existing).unwrap();
+
+        model.geosets[0].tex_coord_sets.clear();
+        assert!(serialize(&model).is_ok(), "zero UV sets are valid");
+    }
+
+    #[test]
+    fn damaged_uv_chunks_return_errors_without_panicking() {
+        let model = model_with_uv_sets(vec![vec![
+            TexCoord { uv: [0.0, 0.0] },
+            TexCoord { uv: [1.0, 0.0] },
+            TexCoord { uv: [0.0, 1.0] },
+        ]]);
+        let bytes = serialize(&model).expect("serialize valid UV set");
+        let geos = bytes.windows(4).position(|tag| tag == b"GEOS").unwrap();
+        let geoset_start = geos + 8;
+        let uvas = bytes.windows(4).position(|tag| tag == b"UVAS").unwrap();
+        let uvbs = uvas + 8;
+
+        let mut cases = Vec::new();
+        let mut invalid_size = bytes.clone();
+        invalid_size[geoset_start..geoset_start + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        cases.push(invalid_size);
+        let mut invalid_tag = bytes.clone();
+        invalid_tag[uvbs..uvbs + 4].copy_from_slice(b"NOPE");
+        cases.push(invalid_tag);
+        cases.push(bytes[..uvbs + 10].to_vec());
+
+        for (index, damaged) in cases.into_iter().enumerate() {
+            let path = temp_path(&format!("damaged-uv-{index}"));
+            fs::write(&path, damaged).unwrap();
+            let result = std::panic::catch_unwind(|| {
+                let mut file = File::open(&path).unwrap();
+                crate::parser::load::load(&mut file)
+            });
+            fs::remove_file(path).unwrap();
+            assert!(result.is_ok(), "damaged UV chunk panicked");
+            assert!(result.unwrap().is_err(), "damaged UV chunk parsed");
+        }
     }
 
     fn scalar_controllers(count: usize) -> Vec<AnimationController> {

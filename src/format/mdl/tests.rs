@@ -776,6 +776,59 @@ fn accepts_utf8_bom() {
 }
 
 #[test]
+fn repeated_tvertices_survive_full_mdl_round_trip() {
+    let second_set = r#"
+    TVertices 3 {
+        { 0.25, 0.75 },
+        { 0.5, 0.5 },
+        { 0.75, 0.25 },
+    }
+"#;
+    let source = MINIMAL.replacen(
+        "    VertexGroup {",
+        &format!("{second_set}    VertexGroup {{"),
+        1,
+    );
+    let model = parse_str(&source).expect("parse two UV sets");
+    assert_eq!(model.geosets[0].tex_coord_sets.len(), 2);
+    assert_ne!(
+        model.geosets[0].tex_coord_sets[0][0].uv,
+        model.geosets[0].tex_coord_sets[1][0].uv
+    );
+
+    let text = to_string(&model).expect("write two UV sets");
+    assert_eq!(text.matches("\tTVertices 3 {").count(), 2);
+    let reparsed = parse_str(&text).expect("reparse two UV sets");
+    assert_eq!(
+        serde_json::to_value(reparsed).unwrap(),
+        serde_json::to_value(&model).unwrap()
+    );
+
+    let mut no_uv = model;
+    no_uv.geosets[0].tex_coord_sets.clear();
+    let text = to_string(&no_uv).expect("write zero UV sets");
+    let reparsed = parse_str(&text).expect("reparse zero UV sets");
+    assert_eq!(
+        serde_json::to_value(reparsed).unwrap(),
+        serde_json::to_value(no_uv).unwrap()
+    );
+}
+
+#[test]
+fn invalid_mdl_uv_set_size_preserves_targets_and_damaged_lists_error() {
+    let mut model = parse_str(MINIMAL).unwrap();
+    model.geosets[0].tex_coord_sets[0].pop();
+    let err = to_string(&model).expect_err("short UV set must be rejected");
+    assert_eq!(err.key, "mdl-invalid-uv-set-size");
+    assert_rejected_save_preserves_targets(&model, "invalid-uv-size");
+
+    let damaged = MINIMAL.replacen("TVertices 3 {", "TVertices 4 {", 1);
+    let result = catch_unwind(AssertUnwindSafe(|| parse_str(&damaged)));
+    assert!(result.is_ok(), "damaged TVertices list panicked");
+    assert!(result.unwrap().is_err(), "damaged TVertices list parsed");
+}
+
+#[test]
 fn save_path_does_not_overwrite_on_serialization_error() {
     let prefix = format!(
         "mdlvis-mdl-save-safety-{}-{}",

@@ -475,7 +475,12 @@ impl Ui {
                     ));
                     let total_verts: usize = model.geosets.iter().map(|g| g.vertices.len()).sum();
                     let total_faces: usize = model.geosets.iter().map(|g| g.faces.len()).sum();
-                    let total_uvs: usize = model.geosets.iter().map(|g| g.tex_coords.len()).sum();
+                    let total_uvs: usize = model
+                        .geosets
+                        .iter()
+                        .flat_map(|geoset| &geoset.tex_coord_sets)
+                        .map(Vec::len)
+                        .sum();
                     ui.label(crate::i18n::t_args(
                         "info.vertices",
                         [("count", total_verts.into())],

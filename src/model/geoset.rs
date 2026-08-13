@@ -24,7 +24,7 @@ pub struct Face {
 pub struct Geoset {
     pub vertices: Vec<Vertex>,
     pub normals: Vec<Normal>,
-    pub tex_coords: Vec<TexCoord>,
+    pub tex_coord_sets: Vec<Vec<TexCoord>>,
     pub faces: Vec<Face>,
     pub material_id: Option<usize>,
     pub selection_group: usize,
@@ -42,7 +42,7 @@ impl Default for Geoset {
         Self {
             vertices: Vec::new(),
             normals: Vec::new(),
-            tex_coords: Vec::new(),
+            tex_coord_sets: Vec::new(),
             faces: Vec::new(),
             material_id: None,
             selection_group: 0,

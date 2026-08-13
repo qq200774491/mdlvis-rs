@@ -16,8 +16,10 @@ pub fn geoset_parse(file: &mut File, model: &mut Model, geos_size: u32) -> Resul
         let inclusive_size = file.read_u32::<LittleEndian>()?;
         let geoset_end = geoset_start + inclusive_size as u64;
 
-        if inclusive_size == 0 || geoset_end > end_pos {
-            break;
+        if inclusive_size < 4 || geoset_end > end_pos {
+            return Err(MdlError::new("mdx-invalid-geoset-size")
+                .with_arg("size", inclusive_size)
+                .with_arg("remaining", end_pos - geoset_start));
         }
 
         let mut geoset = Geoset::default();
@@ -142,28 +144,42 @@ pub fn geoset_parse(file: &mut File, model: &mut Model, geos_size: u32) -> Resul
                     file.seek(SeekFrom::Current((nanim * 28) as i64))?; // Each animation is 7 floats
                 }
                 b"UVAS" => {
-                    let uvas_count = file.read_u32::<LittleEndian>()?;
-
-                    // Read first UVBS set (primary texture coordinates)
-                    if uvas_count > 0 {
+                    ensure_remaining(file, geoset_end, 4, "mdx-truncated-uv-set")?;
+                    let uvas_count = file.read_u32::<LittleEndian>()? as usize;
+                    let remaining = geoset_end.saturating_sub(file.stream_position()?);
+                    if uvas_count > (remaining / 8) as usize {
+                        return Err(MdlError::new("mdx-invalid-uv-set-count")
+                            .with_arg("count", uvas_count)
+                            .with_arg("remaining", remaining));
+                    }
+                    geoset.tex_coord_sets.reserve(uvas_count);
+                    for set_index in 0..uvas_count {
+                        ensure_remaining(file, geoset_end, 8, "mdx-truncated-uv-set")?;
                         file.read_exact(&mut tag)?;
-                        if &tag == b"UVBS" {
-                            let uvbs_count = file.read_u32::<LittleEndian>()? as usize;
-                            for _ in 0..uvbs_count {
-                                let u = file.read_f32::<LittleEndian>()?;
-                                let v = file.read_f32::<LittleEndian>()?;
-                                geoset.tex_coords.push(TexCoord { uv: [u, v] });
-                            }
+                        if &tag != b"UVBS" {
+                            return Err(
+                                MdlError::new("mdx-invalid-uv-set-tag").with_arg("set", set_index)
+                            );
                         }
-
-                        // Skip remaining UVAS sets (secondary UVs)
-                        for _ in 1..uvas_count {
-                            file.read_exact(&mut tag)?;
-                            if &tag == b"UVBS" {
-                                let count = file.read_u32::<LittleEndian>()?;
-                                file.seek(SeekFrom::Current((count * 8) as i64))?;
-                            }
+                        let uvbs_count = file.read_u32::<LittleEndian>()? as usize;
+                        let byte_count = uvbs_count.checked_mul(8).ok_or_else(|| {
+                            MdlError::new("mdx-invalid-uv-set-size")
+                                .with_arg("set", set_index)
+                                .with_arg("actual", uvbs_count)
+                        })?;
+                        ensure_remaining(
+                            file,
+                            geoset_end,
+                            byte_count as u64,
+                            "mdx-truncated-uv-set",
+                        )?;
+                        let mut tex_coords = Vec::with_capacity(uvbs_count);
+                        for _ in 0..uvbs_count {
+                            let u = file.read_f32::<LittleEndian>()?;
+                            let v = file.read_f32::<LittleEndian>()?;
+                            tex_coords.push(TexCoord { uv: [u, v] });
                         }
+                        geoset.tex_coord_sets.push(tex_coords);
                     }
                 }
                 _ => {
@@ -172,6 +188,15 @@ pub fn geoset_parse(file: &mut File, model: &mut Model, geos_size: u32) -> Resul
                     file.seek(SeekFrom::Current(-4))?; // Go back
                     let _val = file.read_u32::<LittleEndian>()?;
                 }
+            }
+        }
+
+        for (set_index, tex_coords) in geoset.tex_coord_sets.iter().enumerate() {
+            if tex_coords.len() != geoset.vertices.len() {
+                return Err(MdlError::new("mdx-invalid-uv-set-size")
+                    .with_arg("set", set_index)
+                    .with_arg("expected", geoset.vertices.len())
+                    .with_arg("actual", tex_coords.len()));
             }
         }
 
@@ -200,5 +225,21 @@ pub fn geoset_parse(file: &mut File, model: &mut Model, geos_size: u32) -> Resul
         file.seek(SeekFrom::Start(geoset_start + inclusive_size as u64))?;
     }
 
+    Ok(())
+}
+
+fn ensure_remaining(
+    file: &mut File,
+    end: u64,
+    required: u64,
+    key: &'static str,
+) -> Result<(), MdlError> {
+    let position = file.stream_position()?;
+    let remaining = end.saturating_sub(position);
+    if required > remaining {
+        return Err(MdlError::new(key)
+            .with_arg("required", required)
+            .with_arg("remaining", remaining));
+    }
     Ok(())
 }

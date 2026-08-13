@@ -32,6 +32,7 @@ pub fn to_string(model: &Model) -> Result<String, MdlError> {
         return Err(MdlError::new("mdl-unknown-chunks-not-representable")
             .with_arg("count", model.unknown_chunks.len()));
     }
+    validate_tex_coord_sets(model)?;
     let mut out = String::new();
     line(&mut out, 0, "// Written by mdlvis-rs.");
     open(&mut out, 0, "Version");
@@ -230,12 +231,9 @@ fn write_geosets(out: &mut String, model: &Model) {
             "Normals",
             geoset.normals.iter().map(|item| &item.normal),
         );
-        write_vectors(
-            out,
-            1,
-            "TVertices",
-            geoset.tex_coords.iter().map(|item| &item.uv),
-        );
+        for tex_coords in &geoset.tex_coord_sets {
+            write_vectors(out, 1, "TVertices", tex_coords.iter().map(|item| &item.uv));
+        }
         open(out, 1, "VertexGroup");
         for group in &geoset.vertex_groups {
             line(out, 2, &format!("{group},"));
@@ -282,6 +280,21 @@ fn write_geosets(out: &mut String, model: &Model) {
         }
         close(out, 0, false);
     }
+}
+
+fn validate_tex_coord_sets(model: &Model) -> Result<(), MdlError> {
+    for (geoset_index, geoset) in model.geosets.iter().enumerate() {
+        for (set_index, tex_coords) in geoset.tex_coord_sets.iter().enumerate() {
+            if tex_coords.len() != geoset.vertices.len() {
+                return Err(MdlError::new("mdl-invalid-uv-set-size")
+                    .with_arg("geoset", geoset_index)
+                    .with_arg("set", set_index)
+                    .with_arg("expected", geoset.vertices.len())
+                    .with_arg("actual", tex_coords.len()));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn write_geoset_anims(out: &mut String, model: &Model) -> Result<(), MdlError> {

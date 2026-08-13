@@ -869,7 +869,7 @@ impl Renderer {
             self.surface.configure(&self.device, &self.config);
         }
     }
-    
+
     pub fn update_model(&mut self, model: &Model) {
         if model.geosets.is_empty() {
             return;
@@ -887,12 +887,12 @@ impl Renderer {
             let index_start = all_indices.len() as u32;
 
             // Add vertices from this geoset with UV coordinates
+            let primary_tex_coords = geoset.tex_coord_sets.first();
             for i in 0..geoset.vertices.len() {
-                let uv = if i < geoset.tex_coords.len() {
-                    geoset.tex_coords[i].uv
-                } else {
-                    [0.0, 0.0] // Default UV if not available
-                };
+                let uv = primary_tex_coords
+                    .and_then(|tex_coords| tex_coords.get(i))
+                    .map(|tex_coord| tex_coord.uv)
+                    .unwrap_or([0.0, 0.0]);
 
                 all_vertices.push(Vertex {
                     position: geoset.vertices[i].position,
@@ -929,10 +929,10 @@ impl Renderer {
             });
 
             println!(
-                "  Geoset {}: added {} vertices, {} UVs, {} faces, material_id: {:?}",
+                "  Geoset {}: added {} vertices, {} UV sets, {} faces, material_id: {:?}",
                 geoset_idx,
                 geoset.vertices.len(),
-                geoset.tex_coords.len(),
+                geoset.tex_coord_sets.len(),
                 geoset.faces.len(),
                 geoset.material_id
             );

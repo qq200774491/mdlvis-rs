@@ -194,19 +194,29 @@ fn parse_texture_anims(root: &[Node], model: &mut Model) -> Result<(), MdlError>
 
 fn parse_geosets(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
     for (body, _) in repeated_blocks(root, "Geoset") {
+        let vertices = parse_vector_list::<3>(body, "Vertices")?
+            .into_iter()
+            .map(|position| Vertex { position })
+            .collect::<Vec<_>>();
+        let tex_coord_sets = parse_repeated_vector_lists::<2>(body, "TVertices")?
+            .into_iter()
+            .map(|set| set.into_iter().map(|uv| TexCoord { uv }).collect())
+            .collect::<Vec<Vec<_>>>();
+        for (set_index, tex_coords) in tex_coord_sets.iter().enumerate() {
+            if tex_coords.len() != vertices.len() {
+                return Err(MdlError::new("mdl-invalid-uv-set-size")
+                    .with_arg("set", set_index)
+                    .with_arg("expected", vertices.len())
+                    .with_arg("actual", tex_coords.len()));
+            }
+        }
         let mut geoset = Geoset {
-            vertices: parse_vector_list::<3>(body, "Vertices")?
-                .into_iter()
-                .map(|position| Vertex { position })
-                .collect(),
+            vertices,
             normals: parse_vector_list::<3>(body, "Normals")?
                 .into_iter()
                 .map(|normal| Normal { normal })
                 .collect(),
-            tex_coords: parse_vector_list::<2>(body, "TVertices")?
-                .into_iter()
-                .map(|uv| TexCoord { uv })
-                .collect(),
+            tex_coord_sets,
             vertex_groups: parse_number_list::<u8>(body, "VertexGroup")?,
             ..Geoset::default()
         };
@@ -853,6 +863,41 @@ fn parse_vector_list<const N: usize>(
         return Ok(Vec::new());
     };
     vector_nodes(body)
+}
+
+fn parse_repeated_vector_lists<const N: usize>(
+    nodes: &[Node],
+    name: &str,
+) -> Result<Vec<Vec<[f32; N]>>, MdlError> {
+    nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| word(node) == Some(name))
+        .map(|(index, _)| {
+            let mut declared = None;
+            for candidate in &nodes[index + 1..] {
+                if declared.is_none() && matches!(candidate.kind, NodeKind::Number(_)) {
+                    declared = Some(number::<usize>(candidate)?);
+                }
+                if let Some(body) = block(candidate) {
+                    let values = vector_nodes(body)?;
+                    if let Some(expected) = declared
+                        && values.len() != expected
+                    {
+                        return Err(MdlError::new("mdl-invalid-vector-list-size")
+                            .with_arg("field", name)
+                            .with_arg("expected", expected)
+                            .with_arg("actual", values.len()));
+                    }
+                    return Ok(values);
+                }
+                if matches!(candidate.kind, NodeKind::Comma) {
+                    break;
+                }
+            }
+            Err(MdlError::new("mdl-missing-vector-list").with_arg("field", name))
+        })
+        .collect()
 }
 
 fn vector_nodes<const N: usize>(nodes: &[Node]) -> Result<Vec<[f32; N]>, MdlError> {
