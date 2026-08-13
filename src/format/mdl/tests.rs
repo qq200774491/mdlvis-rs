@@ -804,6 +804,69 @@ fn save_path_does_not_overwrite_on_serialization_error() {
 }
 
 #[test]
+fn tracked_ember_forge_geosets_follow_original_tail_and_scan_contract() {
+    let path = std::path::Path::new("test-data/Ember Forge  Ember Knight/Ember Forge_opt2.mdx");
+    let mut file = File::open(path).expect("tracked Ember Forge sample should exist");
+    let model = crate::parser::load::load(&mut file).expect("tracked Ember Forge should load");
+    assert_eq!(model.geosets.len(), 11);
+
+    let text = to_string(&model).expect("tracked Ember Forge should write as MDL");
+    let blocks = top_level_geoset_blocks(&text);
+    assert_eq!(blocks.len(), 11);
+
+    for (index, block) in blocks.iter().enumerate() {
+        let minimum = block.find("\tMinimumExtent ").expect("MinimumExtent");
+        let maximum = block.find("\tMaximumExtent ").expect("MaximumExtent");
+        let radius = block.find("\tBoundsRadius ").expect("BoundsRadius");
+        let material = block.find("\tMaterialID ").expect("MaterialID");
+        let selection = block.find("\tSelectionGroup ").expect("SelectionGroup");
+        assert!(
+            minimum < maximum && maximum < radius && radius < material && material < selection,
+            "geoset {index} must write bounds before the original parser tail"
+        );
+        if let Some(unselectable) = block.find("\tUnselectable,") {
+            assert!(selection < unselectable);
+        }
+
+        let first_close_after_tail = selection
+            + block[selection..]
+                .find('}')
+                .expect("geoset tail must be closed");
+        assert_eq!(
+            first_close_after_tail,
+            block.rfind('}').unwrap(),
+            "geoset {index} tail must lead directly to the top-level close"
+        );
+    }
+}
+
+fn top_level_geoset_blocks(text: &str) -> Vec<&str> {
+    let mut blocks = Vec::new();
+    let mut search_from = 0;
+    while let Some(relative) = text[search_from..].find("\nGeoset {\n") {
+        let start = search_from + relative + 1;
+        let open = start + "Geoset ".len();
+        let mut depth = 0;
+        for (relative, character) in text[open..].char_indices() {
+            match character {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let end = open + relative + 1;
+                        blocks.push(&text[start..end]);
+                        search_from = end;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    blocks
+}
+
+#[test]
 fn arthas_fixture_parses_when_available() {
     let path = std::path::Path::new("test-data/Arthas.mdl");
     if !path.exists() {

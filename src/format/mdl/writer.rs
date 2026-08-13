@@ -264,13 +264,6 @@ fn write_geosets(out: &mut String, model: &Model) {
             vector(out, 2, "Matrices", group);
         }
         close(out, 1, false);
-        if let Some(material_id) = geoset.material_id {
-            field(out, 1, "MaterialID", material_id);
-        }
-        field(out, 1, "SelectionGroup", geoset.selection_group);
-        if geoset.unselectable {
-            flag(out, 1, "Unselectable");
-        }
         write_extent(
             out,
             1,
@@ -280,6 +273,13 @@ fn write_geosets(out: &mut String, model: &Model) {
                 maximum: geoset.maximum_extent,
             },
         );
+        if let Some(material_id) = geoset.material_id {
+            field(out, 1, "MaterialID", material_id);
+        }
+        field(out, 1, "SelectionGroup", geoset.selection_group);
+        if geoset.unselectable {
+            flag(out, 1, "Unselectable");
+        }
         close(out, 0, false);
     }
 }
