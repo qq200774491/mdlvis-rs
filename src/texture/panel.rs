@@ -38,7 +38,7 @@ impl TexturePanel {
             self.show_error_info(ctx, texture_manager, texture_id);
         }
 
-        egui::Window::new("纹理")
+        egui::Window::new(t!("texture.panel_title"))
             .default_width(400.0)
             .default_height(600.0)
             .resizable(true)
@@ -46,21 +46,21 @@ impl TexturePanel {
             .show(ctx, |ui| {
                 // Header with statistics
                 ui.horizontal(|ui| {
-                    ui.label(format!("总数：{}", texture_manager.textures.len()));
+                    ui.label(t!("texture.total", count = texture_manager.textures.len()));
                     ui.separator();
                     ui.colored_label(
                         egui::Color32::GREEN,
-                        format!("已加载：{}", texture_manager.loaded_count()),
+                        t!("texture.loaded", count = texture_manager.loaded_count()),
                     );
                     ui.separator();
                     ui.colored_label(
                         egui::Color32::YELLOW,
-                        format!("加载中：{}", texture_manager.loading_count()),
+                        t!("texture.loading", count = texture_manager.loading_count()),
                     );
                     ui.separator();
                     ui.colored_label(
                         egui::Color32::RED,
-                        format!("错误：{}", texture_manager.error_count()),
+                        t!("texture.errors", count = texture_manager.error_count()),
                     );
                 });
 
@@ -68,7 +68,7 @@ impl TexturePanel {
 
                 // Buttons
                 ui.horizontal(|ui| {
-                    if ui.button("加载全部缺失纹理").clicked() {
+                    if ui.button(t!("texture.load_all")).clicked() {
                         for (id, texture) in texture_manager.textures.iter().enumerate() {
                             if !texture.is_loaded() && !texture.is_loading() {
                                 load_requests.push(id);
@@ -76,7 +76,7 @@ impl TexturePanel {
                         }
                     }
 
-                    if ui.button("重试失败项").clicked() {
+                    if ui.button(t!("texture.retry_failed")).clicked() {
                         for (id, texture) in texture_manager.textures.iter().enumerate() {
                             if texture.has_error() {
                                 load_requests.push(id);
@@ -115,16 +115,13 @@ impl TexturePanel {
                                     // Replaceable indicator - always show if RID != 0
                                     // All RID textures use same yellow/gold color
                                     if texture.replaceable_id == 1 {
-                                        ui.colored_label(
-                                            egui::Color32::GOLD,
-                                            "[RID：1 队伍颜色]",
-                                        );
+                                        ui.colored_label(egui::Color32::GOLD, t!("rid.team_color"));
                                     } else if texture.replaceable_id == 2 {
-                                        ui.colored_label(egui::Color32::GOLD, "[RID：2 队伍辉光]");
+                                        ui.colored_label(egui::Color32::GOLD, t!("rid.team_glow"));
                                     } else if texture.replaceable_id > 0 {
                                         ui.colored_label(
                                             egui::Color32::GOLD,
-                                            format!("[RID：{}]", texture.replaceable_id),
+                                            t!("rid.generic", id = texture.replaceable_id),
                                         );
                                     }
                                 });
@@ -145,7 +142,7 @@ impl TexturePanel {
 
                                 // Status
                                 ui.horizontal(|ui| {
-                                    ui.label("状态：");
+                                    ui.label(t!("texture.status"));
                                     ui.colored_label(texture.status_color(), texture.status_text());
                                 });
 
@@ -162,7 +159,7 @@ impl TexturePanel {
                                 ui.horizontal(|ui| {
                                     // Show button for loaded textures
                                     if texture.is_loaded() {
-                                        if ui.button("👁 查看").clicked() {
+                                        if ui.button(t!("texture.show")).clicked() {
                                             self.viewer_texture_id = Some(texture.texture_id);
                                         }
                                     }
@@ -170,16 +167,16 @@ impl TexturePanel {
                                     // Don't show Load/Retry buttons for RID textures - they are generated, not loaded
                                     if texture.replaceable_id == 0 {
                                         if !texture.is_loaded() && !texture.is_loading() {
-                                            if ui.button("加载").clicked() {
+                                            if ui.button(t!("texture.load")).clicked() {
                                                 load_requests.push(texture.texture_id);
                                             }
                                         }
 
                                         if texture.has_error() {
-                                            if ui.button("重试").clicked() {
+                                            if ui.button(t!("texture.retry")).clicked() {
                                                 load_requests.push(texture.texture_id);
                                             }
-                                            if ui.button("⚠ 详情").clicked() {
+                                            if ui.button(t!("texture.info")).clicked() {
                                                 self.error_info_texture_id =
                                                     Some(texture.texture_id);
                                             }
@@ -208,13 +205,13 @@ impl TexturePanel {
     ) {
         let mut is_open = true;
 
-        egui::Window::new(format!("🖼 纹理查看器 - ID：{}", texture_id))
+        egui::Window::new(t!("texture.viewer_title", id = texture_id))
             .default_width(512.0)
             .default_height(512.0)
             .resizable(true)
             .open(&mut is_open)
             .show(ctx, |ui| {
-                ui.heading("纹理查看器");
+                ui.heading(t!("texture.viewer_heading"));
 
                 // Try to get egui texture ID from renderer
                 if let Some(egui_texture_id) = renderer.get_egui_texture_id(texture_id) {
@@ -227,8 +224,8 @@ impl TexturePanel {
                         egui::vec2(max_size, max_size),
                     )));
                 } else {
-                    ui.label("⚠ 纹理尚未加载或不可用");
-                    ui.label("请先在“纹理”窗口中加载该纹理");
+                    ui.label(t!("texture.not_available"));
+                    ui.label(t!("texture.load_first"));
                 }
             });
 
@@ -246,49 +243,49 @@ impl TexturePanel {
         let mut is_open = true;
 
         if let Some(texture) = texture_manager.textures.get(texture_id) {
-            egui::Window::new(format!("⚠ 纹理错误 - ID：{}", texture_id))
+            egui::Window::new(t!("texture.error_title", id = texture_id))
                 .default_width(400.0)
                 .resizable(true)
                 .open(&mut is_open)
                 .show(ctx, |ui| {
-                    ui.heading("纹理加载错误");
+                    ui.heading(t!("texture.error_heading"));
                     ui.separator();
 
-                    ui.label("纹理 ID：");
+                    ui.label(t!("texture.id"));
                     ui.label(format!("  {}", texture.texture_id));
                     ui.add_space(8.0);
 
                     if !texture.filename.is_empty() {
-                        ui.label("文件名：");
+                        ui.label(t!("texture.filename"));
                         ui.label(format!("  {}", texture.filename));
                         ui.add_space(8.0);
                     }
 
                     if let Some(local_path) = &texture.local_path {
-                        ui.label("尝试的路径：");
+                        ui.label(t!("texture.attempted_path"));
                         ui.label(format!("  {}", local_path.display()));
                         ui.add_space(8.0);
                     }
 
                     if texture.replaceable_id > 0 {
-                        ui.label("可替换纹理 ID：");
+                        ui.label(t!("texture.replaceable_id"));
                         ui.label(format!("  {}", texture.replaceable_id));
                         ui.add_space(8.0);
                     }
 
-                    ui.label("错误：");
+                    ui.label(t!("texture.error"));
                     let error_msg = match &texture.status {
                         TextureStatus::Error(msg) => msg.clone(),
-                        _ => "未知错误".to_string(),
+                        _ => t!("texture.unknown_error").to_string(),
                     };
                     ui.colored_label(egui::Color32::RED, format!("  {}", error_msg));
                     ui.add_space(8.0);
 
                     ui.separator();
-                    ui.label("💡 建议：");
-                    ui.label("  • 检查模型目录中是否存在该文件");
-                    ui.label("  • 确认文件格式受支持（.blp）");
-                    ui.label("  • 确认文件没有损坏");
+                    ui.label(t!("texture.suggestions"));
+                    ui.label(t!("texture.suggestion_exists"));
+                    ui.label(t!("texture.suggestion_format"));
+                    ui.label(t!("texture.suggestion_corrupt"));
                 });
         }
 

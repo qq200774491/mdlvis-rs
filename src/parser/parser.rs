@@ -17,7 +17,7 @@ pub(crate) fn read_sequences(
     const SEQUENCE_SIZE: u32 = 0x50 + 13 * 4; // 132 bytes
 
     let count = size / SEQUENCE_SIZE;
-    println!("正在从 SEQS 数据块读取 {} 个动画序列", count);
+    println!("Reading {} sequences from SEQS chunk", count);
 
     for _ in 0..count {
         let mut name_bytes = [0u8; 0x50]; // 80 bytes for name
@@ -29,7 +29,7 @@ pub(crate) fn read_sequences(
                 .copied()
                 .collect(),
         )
-        .unwrap_or_else(|_| "未知".to_string());
+        .unwrap_or_else(|_| "Unknown".to_string());
 
         let start_frame = file.read_u32::<LittleEndian>()?;
         let end_frame = file.read_u32::<LittleEndian>()?;
@@ -42,7 +42,7 @@ pub(crate) fn read_sequences(
 
         let seq_name = name.trim().to_string();
         println!(
-            "  动画序列：'{}'，帧范围 {}-{}",
+            "  Sequence: '{}' frames {}-{}",
             seq_name, start_frame, end_frame
         );
 
@@ -63,7 +63,7 @@ pub(crate) fn read_textures(file: &mut File, model: &mut Model, size: u32) -> Re
     const TEXTURE_SIZE: u32 = 0x100 + 3 * 4; // 268 bytes
 
     let count = size / TEXTURE_SIZE;
-    println!("正在从 TEXS 数据块读取 {} 个纹理", count);
+    println!("Reading {} textures from TEXS chunk", count);
 
     for _ in 0..count {
         let replaceable_id = file.read_u32::<LittleEndian>()?;
@@ -77,7 +77,7 @@ pub(crate) fn read_textures(file: &mut File, model: &mut Model, size: u32) -> Re
                 .copied()
                 .collect(),
         )
-        .unwrap_or_else(|_| "未知".to_string());
+        .unwrap_or_else(|_| "Unknown".to_string());
 
         // Skip padding (4 bytes)
         file.seek(SeekFrom::Current(4))?;
@@ -87,7 +87,7 @@ pub(crate) fn read_textures(file: &mut File, model: &mut Model, size: u32) -> Re
 
         let tex_filename = filename.trim().to_string();
         println!(
-            "  纹理：'{}'，可替换纹理 ID：{}",
+            "  Texture: '{}', ReplaceableID: {}",
             tex_filename, replaceable_id
         );
 
@@ -186,12 +186,12 @@ fn read_controller(
     // Debug: print first controller info
     if model.controllers.len() == 1 {
         println!(
-            "  第一个控制器：{} 个关键帧，插值类型={}，全局序列={}",
+            "  First controller: {} keyframes, interp_type={}, global_seq={}",
             keyframe_count, interpolation_type, global_seq_id
         );
         if !model.controllers[0].keyframes.is_empty() {
             let kf = &model.controllers[0].keyframes[0];
-            println!("    第一个关键帧：帧={}，数据={:?}", kf.frame, kf.data);
+            println!("    First keyframe: frame={}, data={:?}", kf.frame, kf.data);
         }
     }
 
@@ -222,7 +222,7 @@ pub(crate) fn read_bones(file: &mut File, model: &mut Model, size: u32) -> Resul
                 .copied()
                 .collect(),
         )
-        .unwrap_or_else(|_| "未知".to_string());
+        .unwrap_or_else(|_| "Unknown".to_string());
 
         let object_id = file.read_u32::<LittleEndian>()?;
         let parent_id = file.read_i32::<LittleEndian>()?;
@@ -264,7 +264,7 @@ pub(crate) fn read_bones(file: &mut File, model: &mut Model, size: u32) -> Resul
     }
 
     println!(
-        "已加载 {} 个骨骼、{} 个控制器",
+        "Loaded {} bones, {} controllers",
         model.bones.len(),
         model.controllers.len()
     );
@@ -295,7 +295,7 @@ pub(crate) fn read_helpers(file: &mut File, model: &mut Model, size: u32) -> Res
                 .copied()
                 .collect(),
         )
-        .unwrap_or_else(|_| "未知".to_string());
+        .unwrap_or_else(|_| "Unknown".to_string());
 
         let object_id = file.read_u32::<LittleEndian>()?;
         let parent_id = file.read_i32::<LittleEndian>()?;
@@ -323,7 +323,7 @@ pub(crate) fn read_helpers(file: &mut File, model: &mut Model, size: u32) -> Res
         });
     }
 
-    println!("已加载 {} 个辅助节点", model.helpers.len());
+    println!("Loaded {} helpers", model.helpers.len());
     Ok(())
 }
 
@@ -397,7 +397,7 @@ pub(crate) fn read_materials(
         if let Some(layer) = material.layers.first() {
             if let Some(tex_id) = layer.texture_id {
                 println!(
-                    "  材质 {}：纹理 ID={}，过滤模式={:?}，不透明度={}",
+                    "  Material {}: texture_id = {}, filter_mode = {:?}, alpha = {}",
                     model.materials.len(),
                     tex_id,
                     layer.filter_mode,
@@ -412,7 +412,7 @@ pub(crate) fn read_materials(
         file.seek(SeekFrom::Start(material_end))?;
     }
 
-    println!("已加载 {} 个材质", model.materials.len());
+    println!("Loaded {} materials", model.materials.len());
 
     Ok(())
 }
@@ -437,7 +437,7 @@ pub(crate) fn read_pivots(file: &mut File, model: &mut Model, size: u32) -> Resu
     }
 
     println!(
-        "已加载 {} 个枢轴点（{} 个骨骼 + {} 个辅助节点）",
+        "Loaded {} pivot points ({} bones + {} helpers)",
         count,
         model.bones.len(),
         model.helpers.len()

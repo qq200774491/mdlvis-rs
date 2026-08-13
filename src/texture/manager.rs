@@ -53,11 +53,16 @@ impl TextureInfo {
 
     pub fn status_text(&self) -> String {
         match &self.status {
-            TextureStatus::NotLoaded => "未加载".to_string(),
-            TextureStatus::LoadingLocal => "正在从磁盘加载……".to_string(),
-            TextureStatus::LoadingRemote => "正在下载……".to_string(),
-            TextureStatus::Loaded => format!("已加载（{}×{}）", self.width, self.height),
-            TextureStatus::Error(err) => format!("本地加载错误：{}", err),
+            TextureStatus::NotLoaded => t!("texture.status.not_loaded").to_string(),
+            TextureStatus::LoadingLocal => t!("texture.status.loading_local").to_string(),
+            TextureStatus::LoadingRemote => t!("texture.status.loading_remote").to_string(),
+            TextureStatus::Loaded => t!(
+                "texture.status.loaded",
+                width = self.width,
+                height = self.height
+            )
+            .to_string(),
+            TextureStatus::Error(err) => t!("texture.status.local_error", error = err.as_str()).to_string(),
         }
     }
 

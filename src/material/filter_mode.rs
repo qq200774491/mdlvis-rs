@@ -32,7 +32,7 @@ impl FilterMode {
             5 => Self::Modulate,
             6 => Self::Modulate2x,
             _ => {
-                eprintln!("未知过滤模式：{}，已使用“无”", value);
+                eprintln!("Unknown filter mode: {}, using None", value);
                 Self::None
             }
         }
@@ -51,16 +51,28 @@ impl FilterMode {
         }
     }
 
-    /// Get human-readable name
     pub fn name(&self) -> &'static str {
         match self {
-            Self::None => "无",
-            Self::Transparent => "透明",
-            Self::Blend => "混合",
-            Self::Additive => "加法",
-            Self::AddAlpha => "加法透明",
-            Self::Modulate => "调制",
-            Self::Modulate2x => "双倍调制",
+            Self::None => "None",
+            Self::Transparent => "Transparent",
+            Self::Blend => "Blend",
+            Self::Additive => "Additive",
+            Self::AddAlpha => "AddAlpha",
+            Self::Modulate => "Modulate",
+            Self::Modulate2x => "Modulate2x",
         }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            Self::None => t!("filter.none"),
+            Self::Transparent => t!("filter.transparent"),
+            Self::Blend => t!("filter.blend"),
+            Self::Additive => t!("filter.additive"),
+            Self::AddAlpha => t!("filter.add_alpha"),
+            Self::Modulate => t!("filter.modulate"),
+            Self::Modulate2x => t!("filter.modulate2x"),
+        }
+        .to_string()
     }
 }

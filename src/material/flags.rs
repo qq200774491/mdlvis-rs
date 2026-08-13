@@ -44,15 +44,26 @@ impl ShadingFlags {
         bits
     }
 
-    /// Get human-readable name
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Unshaded => "无光照",
-            Self::SphereEnvMap => "球面环境映射",
-            Self::TwoSided => "双面",
-            Self::Unfogged => "不受雾影响",
-            Self::NoDepthTest => "禁用深度测试",
-            Self::NoDepthSet => "不写入深度",
+            Self::Unshaded => "Unshaded",
+            Self::SphereEnvMap => "SphereEnv",
+            Self::TwoSided => "TwoSided",
+            Self::Unfogged => "Unfogged",
+            Self::NoDepthTest => "NoDepthTest",
+            Self::NoDepthSet => "NoDepthSet",
         }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            Self::Unshaded => t!("shading.unshaded"),
+            Self::SphereEnvMap => t!("shading.sphere_env"),
+            Self::TwoSided => t!("shading.two_sided"),
+            Self::Unfogged => t!("shading.unfogged"),
+            Self::NoDepthTest => t!("shading.no_depth_test"),
+            Self::NoDepthSet => t!("shading.no_depth_set"),
+        }
+        .to_string()
     }
 }

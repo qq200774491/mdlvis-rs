@@ -58,7 +58,7 @@ fn configure_chinese_font(ctx: &egui::Context) {
         return;
     }
 
-    eprintln!("未找到可用的中文字体，界面中的中文可能无法正常显示。");
+    eprintln!("{}", t!("error.font_missing"));
 }
 
 pub struct AppHandler {
@@ -89,7 +89,7 @@ impl ApplicationHandler for AppHandler {
                 event_loop
                     .create_window(
                         Window::default_attributes()
-                            .with_title("MDLVis-RS - 魔兽争霸 3 模型查看器")
+                            .with_title(t!("window.title").as_ref())
                             .with_inner_size(winit::dpi::LogicalSize::new(1200.0, 800.0)),
                     )
                     .unwrap(),
@@ -151,12 +151,12 @@ impl ApplicationHandler for AppHandler {
             // Check if there's a pending model to load
             if let Some(path) = self.pending_model_path.take() {
                 if let Err(e) = self.runtime.block_on(app.load_model(&path)) {
-                    eprintln!("加载模型“{}”失败：{}", path, e);
+                    eprintln!("{}", t!("error.load_model", path = path.as_str(), error = e));
                 }
             }
 
             if let Err(e) = app.render() {
-                eprintln!("渲染错误：{:?}", e);
+                eprintln!("{}", t!("error.render", error = format!("{:?}", e)));
             }
             if let Some(window) = &self.window {
                 window.request_redraw();

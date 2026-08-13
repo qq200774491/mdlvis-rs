@@ -1,0 +1,412 @@
+_version: 2
+
+window.title:
+  en: "MDLVis-RS - Warcraft 3 Model Viewer"
+  zh-CN: "MDLVis-RS - 魔兽争霸 3 模型查看器"
+
+menu.open_model:
+  en: "📁 Open Model"
+  zh-CN: "📁 打开模型"
+menu.windows:
+  en: "📋 Windows:"
+  zh-CN: "📋 窗口："
+menu.textures:
+  en: "Textures"
+  zh-CN: "纹理"
+menu.display:
+  en: "Display"
+  zh-CN: "显示设置"
+menu.colors:
+  en: "Colors"
+  zh-CN: "颜色"
+menu.model_info:
+  en: "Model Info"
+  zh-CN: "模型信息"
+menu.geosets:
+  en: "Geosets"
+  zh-CN: "几何体"
+menu.materials:
+  en: "Materials"
+  zh-CN: "材质"
+menu.animation:
+  en: "Animation"
+  zh-CN: "动画"
+menu.language:
+  en: "Language"
+  zh-CN: "语言"
+
+display.title:
+  en: "🎨 Display Settings"
+  zh-CN: "🎨 显示设置"
+display.show_skeleton:
+  en: "Show Skeleton"
+  zh-CN: "显示骨骼"
+display.wireframe:
+  en: "Wireframe Mode"
+  zh-CN: "线框模式"
+display.show_grid:
+  en: "Show Grid"
+  zh-CN: "显示网格"
+display.show_bounding_box:
+  en: "Show Bounding Box"
+  zh-CN: "显示包围盒"
+display.far_plane:
+  en: "Far Plane (View Distance):"
+  zh-CN: "远裁剪面（视距）："
+display.units:
+  en: " units"
+  zh-CN: " 单位"
+display.reset_camera:
+  en: "Reset Camera"
+  zh-CN: "重置相机"
+
+colors.title:
+  en: "🌈 Colors"
+  zh-CN: "🌈 颜色"
+colors.team:
+  en: "Team Color:"
+  zh-CN: "队伍颜色："
+colors.skybox:
+  en: "Skybox Color:"
+  zh-CN: "天空盒颜色："
+colors.grid_major:
+  en: "Grid Major Lines:"
+  zh-CN: "网格主线颜色："
+colors.grid_minor:
+  en: "Grid Minor Lines:"
+  zh-CN: "网格辅线颜色："
+colors.bounding_box:
+  en: "Bounding Box Color:"
+  zh-CN: "包围盒颜色："
+colors.reset:
+  en: "Reset to Defaults"
+  zh-CN: "恢复默认颜色"
+
+model_info.title:
+  en: "ℹ️ Model Info"
+  zh-CN: "ℹ️ 模型信息"
+model_info.name:
+  en: "Name: %{name}"
+  zh-CN: "名称：%{name}"
+model_info.geosets:
+  en: "Geosets: %{count}"
+  zh-CN: "几何体：%{count}"
+model_info.total_vertices:
+  en: "  Total vertices: %{count}"
+  zh-CN: "  顶点总数：%{count}"
+model_info.total_faces:
+  en: "  Total faces: %{count}"
+  zh-CN: "  面总数：%{count}"
+model_info.total_uvs:
+  en: "  Total UVs: %{count}"
+  zh-CN: "  UV 总数：%{count}"
+model_info.materials:
+  en: "Materials: %{count}"
+  zh-CN: "材质：%{count}"
+model_info.textures:
+  en: "Textures: %{count}"
+  zh-CN: "纹理：%{count}"
+model_info.sequences:
+  en: "Sequences: %{count}"
+  zh-CN: "动画序列：%{count}"
+model_info.bones:
+  en: "Bones: %{count}"
+  zh-CN: "骨骼：%{count}"
+model_info.helpers:
+  en: "Helpers: %{count}"
+  zh-CN: "辅助节点：%{count}"
+model_info.none:
+  en: "No model loaded"
+  zh-CN: "尚未加载模型"
+
+geosets.title:
+  en: "📦 Geosets"
+  zh-CN: "📦 几何体"
+geosets.verts_faces:
+  en: "%{verts} verts, %{faces} faces"
+  zh-CN: "%{verts} 个顶点，%{faces} 个面"
+
+materials.title:
+  en: "🎨 Materials"
+  zh-CN: "🎨 材质"
+materials.header:
+  en: "🎨 Material #%{id} (%{layers} layers)"
+  zh-CN: "🎨 材质 #%{id}（%{layers} 个图层）"
+materials.copy_json:
+  en: "Copy material info as JSON to clipboard"
+  zh-CN: "将材质信息以 JSON 格式复制到剪贴板"
+materials.layers:
+  en: "Layers: %{count}"
+  zh-CN: "图层数：%{count}"
+materials.layer:
+  en: "Layer #%{id}"
+  zh-CN: "图层 #%{id}"
+materials.texture:
+  en: "    📎 Texture #%{id}"
+  zh-CN: "    📎 纹理 #%{id}"
+materials.texture_rid:
+  en: "    📎 Texture #%{id} [RID: %{rid}]"
+  zh-CN: "    📎 纹理 #%{id} [RID：%{rid}]"
+materials.texture_rid_team_color:
+  en: "    📎 Texture #%{id} [RID: 1 Team Color]"
+  zh-CN: "    📎 纹理 #%{id} [RID：1 队伍颜色]"
+materials.texture_rid_team_glow:
+  en: "    📎 Texture #%{id} [RID: 2 Team Glow]"
+  zh-CN: "    📎 纹理 #%{id} [RID：2 队伍辉光]"
+materials.texture_none:
+  en: "    Texture ID: None"
+  zh-CN: "    纹理 ID：无"
+materials.filter_mode:
+  en: "    FilterMode: %{name}"
+  zh-CN: "    过滤模式：%{name}"
+materials.reset:
+  en: "Reset to original"
+  zh-CN: "恢复原始值"
+materials.modified:
+  en: "(modified)"
+  zh-CN: "（已修改）"
+materials.shading:
+  en: "    Shading %{mask}"
+  zh-CN: "    着色标志 %{mask}"
+materials.alpha:
+  en: "    Alpha:"
+  zh-CN: "    不透明度："
+materials.orig:
+  en: "(orig: %{value})"
+  zh-CN: "（原始值：%{value}）"
+
+filter.none:
+  en: "None"
+  zh-CN: "无"
+filter.transparent:
+  en: "Transparent"
+  zh-CN: "透明"
+filter.blend:
+  en: "Blend"
+  zh-CN: "混合"
+filter.additive:
+  en: "Additive"
+  zh-CN: "加法"
+filter.add_alpha:
+  en: "AddAlpha"
+  zh-CN: "加法透明"
+filter.modulate:
+  en: "Modulate"
+  zh-CN: "调制"
+filter.modulate2x:
+  en: "Modulate2x"
+  zh-CN: "双倍调制"
+
+shading.unshaded:
+  en: "Unshaded"
+  zh-CN: "无光照"
+shading.sphere_env:
+  en: "SphereEnv"
+  zh-CN: "球面环境映射"
+shading.two_sided:
+  en: "TwoSided"
+  zh-CN: "双面"
+shading.unfogged:
+  en: "Unfogged"
+  zh-CN: "不受雾影响"
+shading.no_depth_test:
+  en: "NoDepthTest"
+  zh-CN: "禁用深度测试"
+shading.no_depth_set:
+  en: "NoDepthSet"
+  zh-CN: "不写入深度"
+
+rid.team_color:
+  en: "[RID: 1 Team Color]"
+  zh-CN: "[RID：1 队伍颜色]"
+rid.team_glow:
+  en: "[RID: 2 Team Glow]"
+  zh-CN: "[RID：2 队伍辉光]"
+rid.generic:
+  en: "[RID: %{id}]"
+  zh-CN: "[RID：%{id}]"
+
+animation.title:
+  en: "🎬 Animation"
+  zh-CN: "🎬 动画"
+animation.sequences:
+  en: "Sequences:"
+  zh-CN: "序列："
+animation.play:
+  en: "▶ Play"
+  zh-CN: "▶ 播放"
+animation.pause:
+  en: "⏸ Pause"
+  zh-CN: "⏸ 暂停"
+animation.stop:
+  en: "⏹ Stop"
+  zh-CN: "⏹ 停止"
+animation.reset:
+  en: "🔄 Reset"
+  zh-CN: "🔄 重置"
+animation.loop:
+  en: "🔁 Loop"
+  zh-CN: "🔁 循环"
+animation.once:
+  en: "➡ Once"
+  zh-CN: "➡ 单次"
+animation.list:
+  en: "Animations:"
+  zh-CN: "动画列表："
+animation.current:
+  en: "Animation: %{name}"
+  zh-CN: "动画：%{name}"
+animation.frames:
+  en: "Frames: %{start} - %{end}"
+  zh-CN: "帧范围：%{start} - %{end}"
+animation.duration:
+  en: "Duration: %{frames} frames (%{seconds}s at 30fps)"
+  zh-CN: "时长：%{frames} 帧（30 FPS 时为 %{seconds} 秒）"
+animation.playing:
+  en: "▶ Playing - Frame %{frame}"
+  zh-CN: "▶ 正在播放 - 第 %{frame} 帧"
+animation.paused:
+  en: "⏸ Paused - Frame %{frame}"
+  zh-CN: "⏸ 已暂停 - 第 %{frame} 帧"
+animation.non_looping:
+  en: "⚠ Non-looping"
+  zh-CN: "⚠ 不循环"
+animation.rarity:
+  en: "Rarity: %{value}"
+  zh-CN: "稀有度：%{value}"
+animation.frame:
+  en: "Frame:"
+  zh-CN: "帧："
+animation.none:
+  en: "No animations in model"
+  zh-CN: "模型中没有动画"
+
+texture.panel_title:
+  en: "Textures"
+  zh-CN: "纹理"
+texture.total:
+  en: "Total: %{count}"
+  zh-CN: "总数：%{count}"
+texture.loaded:
+  en: "Loaded: %{count}"
+  zh-CN: "已加载：%{count}"
+texture.loading:
+  en: "Loading: %{count}"
+  zh-CN: "加载中：%{count}"
+texture.errors:
+  en: "Errors: %{count}"
+  zh-CN: "错误：%{count}"
+texture.load_all:
+  en: "Load All Missing"
+  zh-CN: "加载全部缺失纹理"
+texture.retry_failed:
+  en: "Retry Failed"
+  zh-CN: "重试失败项"
+texture.status:
+  en: "Status:"
+  zh-CN: "状态："
+texture.show:
+  en: "👁 Show"
+  zh-CN: "👁 查看"
+texture.load:
+  en: "Load"
+  zh-CN: "加载"
+texture.retry:
+  en: "Retry"
+  zh-CN: "重试"
+texture.info:
+  en: "⚠ Info"
+  zh-CN: "⚠ 详情"
+texture.viewer_title:
+  en: "🖼 Texture Viewer - ID: %{id}"
+  zh-CN: "🖼 纹理查看器 - ID：%{id}"
+texture.viewer_heading:
+  en: "Texture Viewer"
+  zh-CN: "纹理查看器"
+texture.not_available:
+  en: "⚠ Texture not loaded or not available"
+  zh-CN: "⚠ 纹理尚未加载或不可用"
+texture.load_first:
+  en: "Please load the texture first from the Textures window"
+  zh-CN: "请先在“纹理”窗口中加载该纹理"
+texture.error_title:
+  en: "⚠ Texture Error - ID: %{id}"
+  zh-CN: "⚠ 纹理错误 - ID：%{id}"
+texture.error_heading:
+  en: "Texture Load Error"
+  zh-CN: "纹理加载错误"
+texture.id:
+  en: "Texture ID:"
+  zh-CN: "纹理 ID："
+texture.filename:
+  en: "Filename:"
+  zh-CN: "文件名："
+texture.attempted_path:
+  en: "Attempted Path:"
+  zh-CN: "尝试的路径："
+texture.replaceable_id:
+  en: "Replaceable ID:"
+  zh-CN: "可替换纹理 ID："
+texture.error:
+  en: "Error:"
+  zh-CN: "错误："
+texture.unknown_error:
+  en: "Unknown error"
+  zh-CN: "未知错误"
+texture.suggestions:
+  en: "💡 Suggestions:"
+  zh-CN: "💡 建议："
+texture.suggestion_exists:
+  en: "  • Check if the file exists in the model's directory"
+  zh-CN: "  • 检查模型目录中是否存在该文件"
+texture.suggestion_format:
+  en: "  • Verify the file format is supported (.blp)"
+  zh-CN: "  • 确认文件格式受支持（.blp）"
+texture.suggestion_corrupt:
+  en: "  • Ensure the file is not corrupted"
+  zh-CN: "  • 确认文件没有损坏"
+texture.status.not_loaded:
+  en: "Not Loaded"
+  zh-CN: "未加载"
+texture.status.loading_local:
+  en: "Loading from disk..."
+  zh-CN: "正在从磁盘加载……"
+texture.status.loading_remote:
+  en: "Downloading..."
+  zh-CN: "正在下载……"
+texture.status.loaded:
+  en: "Loaded (%{width}x%{height})"
+  zh-CN: "已加载（%{width}×%{height}）"
+texture.status.local_error:
+  en: "Local error: %{error}"
+  zh-CN: "本地加载错误：%{error}"
+
+file.mdx_model:
+  en: "MDX Model"
+  zh-CN: "MDX 模型"
+
+panic.unknown:
+  en: "Unknown panic"
+  zh-CN: "未知的程序异常"
+panic.location:
+  en: "\n\nLocation: %{file}:%{line}:%{column}"
+  zh-CN: "\n\n位置：%{file}:%{line}:%{column}"
+panic.crashed:
+  en: "MDLVis-RS crashed!\n\n%{message}%{location}"
+  zh-CN: "MDLVis-RS 已崩溃！\n\n%{message}%{location}"
+panic.title:
+  en: "MDLVis-RS Error"
+  zh-CN: "MDLVis-RS 错误"
+panic.report:
+  en: "Please report this error to the developers."
+  zh-CN: "请将此错误报告给开发者。"
+
+error.font_missing:
+  en: "No Chinese system font found; CJK text may not display correctly."
+  zh-CN: "未找到可用的中文字体，界面中的中文可能无法正常显示。"
+error.load_model:
+  en: "Failed to load model '%{path}': %{error}"
+  zh-CN: "加载模型“%{path}”失败：%{error}"
+error.render:
+  en: "Render error: %{error}"
+  zh-CN: "渲染错误：%{error}"

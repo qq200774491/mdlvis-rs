@@ -200,7 +200,7 @@ impl AnimationSystem {
         }
 
         println!(
-            "动画系统初始化完成：{} 个骨骼、{} 个辅助节点、{} 个枢轴点、{} 个控制器",
+            "Animation system initialized: {} bones, {} helpers, {} pivot points, {} controllers",
             self.bones.len(),
             self.helpers.len(),
             self.pivot_points.len(),

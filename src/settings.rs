@@ -64,6 +64,41 @@ impl ColorSettings {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Language {
+    En,
+    ZhCn,
+}
+
+impl Default for Language {
+    fn default() -> Self {
+        Self::ZhCn
+    }
+}
+
+impl Language {
+    pub const ALL: [Language; 2] = [Language::En, Language::ZhCn];
+
+    pub fn locale(self) -> &'static str {
+        match self {
+            Language::En => "en",
+            Language::ZhCn => "zh-CN",
+        }
+    }
+
+    pub fn native_name(self) -> &'static str {
+        match self {
+            Language::En => "English",
+            Language::ZhCn => "中文",
+        }
+    }
+
+    pub fn apply(self) {
+        rust_i18n::set_locale(self.locale());
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UiSettings {
     pub show_texture_panel: bool,
@@ -73,6 +108,8 @@ pub struct UiSettings {
     pub show_geosets: bool,
     pub show_animation: bool,
     pub show_materials: bool,
+    #[serde(default)]
+    pub language: Language,
 }
 
 impl Default for UiSettings {
@@ -85,6 +122,7 @@ impl Default for UiSettings {
             show_geosets: false,
             show_animation: false,
             show_materials: false,
+            language: Language::default(),
         }
     }
 }
@@ -108,10 +146,12 @@ pub struct Settings {
 
 impl Settings {
     pub fn load() -> Self {
-        Self {
+        let settings = Self {
             display: DisplaySettings::load(),
             colors: ColorSettings::load(),
             ui: UiSettings::load(),
-        }
+        };
+        settings.ui.language.apply();
+        settings
     }
 }

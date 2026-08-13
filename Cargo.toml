@@ -18,3 +18,8 @@ nalgebra-glm = "0.20.0"
 wgpu = "27.0.1"
 confy = "2.0.0"
 rfd = "0.15"
+rust-i18n = "4"
+
+[package.metadata.i18n]
+available-locales = ["en", "zh-CN"]
+default-locale = "en"

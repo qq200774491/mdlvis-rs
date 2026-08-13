@@ -929,7 +929,7 @@ impl Renderer {
             });
 
             println!(
-                "  几何体 {}：已添加 {} 个顶点、{} 个 UV、{} 个面，材质 ID：{:?}",
+                "  Geoset {}: added {} vertices, {} UVs, {} faces, material_id: {:?}",
                 geoset_idx,
                 geoset.vertices.len(),
                 geoset.tex_coords.len(),
@@ -953,7 +953,7 @@ impl Renderer {
                 }
             }
             println!(
-                "模型边界：最小值({:.2}, {:.2}, {:.2})，最大值({:.2}, {:.2}, {:.2})",
+                "Model bounds: min({:.2}, {:.2}, {:.2}), max({:.2}, {:.2}, {:.2})",
                 min[0], min[1], min[2], max[0], max[1], max[2]
             );
 
@@ -965,13 +965,13 @@ impl Renderer {
             ];
 
             println!(
-                "中心点：({:.2}, {:.2}, {:.2})",
+                "Center: ({:.2}, {:.2}, {:.2})",
                 self.model_center[0], self.model_center[1], self.model_center[2]
             );
         }
 
         println!(
-            "总计：{} 个顶点、{} 个索引（{} 个三角形）",
+            "Total: {} vertices, {} indices ({} triangles)",
             all_vertices.len(),
             all_indices.len(),
             all_indices.len() / 3
@@ -999,7 +999,7 @@ impl Renderer {
         self.vertex_buffer = vertex_buffer;
         self.index_buffer = index_buffer;
         self.num_indices = all_indices.len() as u32;
-        println!("索引数量已更新为：{}", self.num_indices);
+        println!("Updated num_indices to: {}", self.num_indices);
 
         // Generate skeleton lines
         if !model.bones.is_empty() || !model.helpers.is_empty() {
@@ -1068,7 +1068,7 @@ impl Renderer {
                         });
                 self.num_skeleton_lines = (skeleton_vertices.len() / 2) as u32;
                 println!(
-                    "已加载 {} 个骨骼 + {} 个辅助节点，生成 {} 条骨架线",
+                    "Loaded {} bones + {} helpers, generated {} skeleton lines",
                     model.bones.len(),
                     model.helpers.len(),
                     self.num_skeleton_lines
@@ -1076,7 +1076,7 @@ impl Renderer {
             } else {
                 self.num_skeleton_lines = 0;
                 println!(
-                    "已加载 {} 个骨骼 + {} 个辅助节点，但未生成骨架线（全部为根节点或父节点 ID 无效）",
+                    "Loaded {} bones + {} helpers, but no lines generated (all roots or invalid parent_ids)",
                     model.bones.len(),
                     model.helpers.len()
                 );

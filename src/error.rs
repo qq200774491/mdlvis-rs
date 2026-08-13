@@ -49,17 +49,7 @@ impl MdlError {
 
 impl fmt::Display for MdlError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = match self.key {
-            "string-error" | "str-error" => "字符串错误",
-            "network-error" => "网络错误",
-            "io-error" => "输入输出错误",
-            "blp-error" => "BLP 纹理解码错误",
-            "reqwest::Error" => "网络请求错误",
-            "wgpu::CreateSurfaceError" => "图形表面创建错误",
-            "winit::error::EventLoopError" => "窗口事件循环错误",
-            key => key,
-        };
-        write!(f, "{}（", message)?;
+        write!(f, "{}(", self.key)?;
         let mut first = true;
         for (k, v) in &self.args {
             if !first {
@@ -68,7 +58,7 @@ impl fmt::Display for MdlError {
             first = false;
             write!(f, "{k}={v}")?;
         }
-        write!(f, "）")
+        write!(f, ")")
     }
 }
 

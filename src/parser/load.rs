@@ -7,7 +7,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 pub fn load(file: &mut File) -> Result<Model, MdlError> {
     let mut model = Model::default();
-    model.name = "MDX 模型".to_string();
+    model.name = "MDX Model".to_string();
 
     file.seek(SeekFrom::Start(4))?;
 
@@ -24,7 +24,7 @@ pub fn load(file: &mut File) -> Result<Model, MdlError> {
             b"VERS" => {
                 // Version chunk
                 let version = file.read_u32::<LittleEndian>()?;
-                println!("MDX 版本：{}", version);
+                println!("MDX Version: {}", version);
             }
             b"MODL" => {
                 // Model header - skip 8 bytes, then read 336 bytes for name
@@ -33,24 +33,24 @@ pub fn load(file: &mut File) -> Result<Model, MdlError> {
                 file.read_exact(&mut name_bytes)?;
                 model.name =
                     String::from_utf8(name_bytes.into_iter().take_while(|&b| b != 0).collect())
-                        .unwrap_or_else(|_| "未知".to_string());
-                println!("模型名称：{}", model.name.trim());
+                        .unwrap_or_else(|_| "Unknown".to_string());
+                println!("Model name: {}", model.name.trim());
             }
             b"GEOS" => {
                 // Geosets - this chunk contains multiple geosets
-                println!("正在读取 GEOS 数据块，大小：{}", size);
+                println!("Reading GEOS chunk, size: {}", size);
                 geoset_parse(file, &mut model, size)?;
-                println!("已加载 {} 个几何体", model.geosets.len());
+                println!("Loaded {} geosets", model.geosets.len());
             }
             b"SEQS" => {
                 // Sequences
                 crate::parser::parser::read_sequences(file, &mut model, size)?;
-                println!("已加载 {} 个动画序列", model.sequences.len());
+                println!("Loaded {} sequences", model.sequences.len());
             }
             b"TEXS" => {
                 // Textures
                 crate::parser::parser::read_textures(file, &mut model, size)?;
-                println!("已加载 {} 个纹理", model.textures.len());
+                println!("Loaded {} textures", model.textures.len());
             }
             b"BONE" => {
                 // Bones
