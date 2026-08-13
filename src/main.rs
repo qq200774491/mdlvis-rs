@@ -1,6 +1,7 @@
 mod animation;
 mod app;
 mod error;
+mod format;
 mod i18n;
 mod material;
 mod model;
