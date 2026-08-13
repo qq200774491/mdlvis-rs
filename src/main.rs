@@ -7,6 +7,7 @@ mod material;
 mod model;
 mod parser;
 mod renderer;
+mod scene;
 mod settings;
 mod texture;
 mod ui;
