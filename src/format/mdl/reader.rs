@@ -354,12 +354,19 @@ fn parse_particle_emitters(root: &[Node], model: &mut Model) -> Result<(), MdlEr
         let node = parse_node(body, label, TYPE_HELP, model)?;
         model.particle_emitters.push(ParticleEmitter {
             node,
+            uses_type: Default::default(),
             emission_rate: optional_number(body, "EmissionRate")?.unwrap_or(0.0),
+            emission_rate_track: TrackId::NONE,
             gravity: optional_number(body, "Gravity")?.unwrap_or(0.0),
+            gravity_track: TrackId::NONE,
             longitude: optional_number(body, "Longitude")?.unwrap_or(0.0),
+            longitude_track: TrackId::NONE,
             latitude: optional_number(body, "Latitude")?.unwrap_or(0.0),
+            latitude_track: TrackId::NONE,
             life_span: optional_number(body, "LifeSpan")?.unwrap_or(0.0),
+            life_span_track: TrackId::NONE,
             init_velocity: optional_number(body, "InitVelocity")?.unwrap_or(0.0),
+            init_velocity_track: TrackId::NONE,
             path: optional_string(body, "Path")?.unwrap_or_default(),
         });
     }
@@ -436,10 +443,15 @@ fn parse_ribbons(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
         model.ribbons.push(RibbonEmitter {
             node,
             height_above: optional_number(body, "HeightAbove")?.unwrap_or(0.0),
+            height_above_track: TrackId::NONE,
             height_below: optional_number(body, "HeightBelow")?.unwrap_or(0.0),
+            height_below_track: TrackId::NONE,
             alpha: optional_number(body, "Alpha")?.unwrap_or(1.0),
+            alpha_track: TrackId::NONE,
             color: optional_vector(body, "Color")?.unwrap_or([1.0; 3]),
+            color_track: TrackId::NONE,
             texture_slot: optional_number(body, "TextureSlot")?.unwrap_or(0),
+            texture_slot_track: TrackId::NONE,
             emission_rate: optional_number(body, "EmissionRate")?.unwrap_or(0),
             life_span: optional_number(body, "LifeSpan")?.unwrap_or(0.0),
             gravity: optional_number(body, "Gravity")?.unwrap_or(0.0),

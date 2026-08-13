@@ -8,7 +8,8 @@ use super::ids::{
 use super::model::Model;
 use super::node::{NodeFlags, NodeKind, NodeRef, TYPE_ATCH, TYPE_BONE};
 use super::objects::{
-    LayerRef, LightType, MaterialFlags, ParticleEmitter2, SequenceExtras, TextureFlags,
+    LayerRef, LightType, MaterialFlags, ParticleEmitter, ParticleEmitter2, ParticleEmitterUses,
+    RibbonEmitter, SequenceExtras, TextureFlags,
 };
 use super::tracks::{InterpolationType, TrackKind};
 
@@ -27,8 +28,49 @@ fn default_model_has_identified_collections() {
     assert!(model.events.is_empty());
     assert!(model.collisions.is_empty());
     assert!(model.pivot_points.is_empty());
+    assert!(model.mdlvis_data.is_none());
     assert!(model.unknown_chunks.is_empty());
     assert_eq!(model.blend_time, 0);
+}
+
+#[test]
+fn particle_and_ribbon_tracks_default_to_none() {
+    let emitter = ParticleEmitter::default();
+    assert_eq!(emitter.uses_type, ParticleEmitterUses::Tga);
+    for track in [
+        emitter.emission_rate_track,
+        emitter.gravity_track,
+        emitter.longitude_track,
+        emitter.latitude_track,
+        emitter.life_span_track,
+        emitter.init_velocity_track,
+    ] {
+        assert!(track.is_none());
+    }
+
+    let ribbon = RibbonEmitter::default();
+    for track in [
+        ribbon.height_above_track,
+        ribbon.height_below_track,
+        ribbon.alpha_track,
+        ribbon.color_track,
+        ribbon.texture_slot_track,
+    ] {
+        assert!(track.is_none());
+    }
+}
+
+#[test]
+fn mdlvis_payload_distinguishes_absent_and_empty_chunks() {
+    let absent = Model::default();
+    let present = Model {
+        mdlvis_data: Some(Vec::new()),
+        ..Model::default()
+    };
+    assert_ne!(
+        serde_json::to_value(absent).expect("serialize absent MDVI"),
+        serde_json::to_value(present).expect("serialize empty MDVI")
+    );
 }
 
 #[test]

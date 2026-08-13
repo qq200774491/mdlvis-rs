@@ -125,13 +125,28 @@ pub struct Light {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ParticleEmitter {
     pub node: NodeRef,
+    pub uses_type: ParticleEmitterUses,
     pub emission_rate: f32,
+    pub emission_rate_track: TrackId,
     pub gravity: f32,
+    pub gravity_track: TrackId,
     pub longitude: f32,
+    pub longitude_track: TrackId,
     pub latitude: f32,
+    pub latitude_track: TrackId,
     pub life_span: f32,
+    pub life_span_track: TrackId,
     pub init_velocity: f32,
+    pub init_velocity_track: TrackId,
     pub path: String,
+}
+
+/// Source payload kind used by a version-1 particle emitter.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParticleEmitterUses {
+    #[default]
+    Tga,
+    Mdl,
 }
 
 /// `PRE2` emitter flags.
@@ -186,10 +201,16 @@ pub struct ParticleEmitter2 {
 pub struct RibbonEmitter {
     pub node: NodeRef,
     pub height_above: f32,
+    pub height_above_track: TrackId,
     pub height_below: f32,
+    pub height_below_track: TrackId,
     pub alpha: f32,
+    pub alpha_track: TrackId,
     pub color: [f32; 3],
+    pub color_track: TrackId,
     pub texture_slot: i32,
+    /// Text MDL can animate this field; MDX 800 has no matching fourCC.
+    pub texture_slot_track: TrackId,
     pub emission_rate: u32,
     pub life_span: f32,
     pub gravity: f32,

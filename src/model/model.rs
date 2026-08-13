@@ -41,6 +41,9 @@ pub struct Model {
     pub ribbons: Vec<RibbonEmitter>,
     pub events: Vec<EventObject>,
     pub collisions: Vec<CollisionShape>,
+    /// Payload bytes of the identified MDVI chunk, excluding fourCC and size.
+    /// `None` means absent; `Some(vec![])` means a present zero-length chunk.
+    pub mdlvis_data: Option<Vec<u8>>,
     pub unknown_chunks: Vec<UnknownChunk>,
 }
 
@@ -69,6 +72,7 @@ impl Default for Model {
             ribbons: Vec::new(),
             events: Vec::new(),
             collisions: Vec::new(),
+            mdlvis_data: None,
             unknown_chunks: Vec::new(),
         }
     }
