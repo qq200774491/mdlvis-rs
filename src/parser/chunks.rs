@@ -11,12 +11,12 @@ use crate::model::objects::{
     TextureAnim,
 };
 use crate::parser::io::{
-    read_controller, read_controller_ex, read_cstring, read_first_controller, read_vec3, skip_to,
     TAG_KATV, TAG_KCRL, TAG_KCTR, TAG_KGAC, TAG_KGAO, TAG_KGRT, TAG_KGSC, TAG_KGTR, TAG_KLAC,
     TAG_KLAE, TAG_KLAI, TAG_KLAS, TAG_KLAV, TAG_KLBC, TAG_KLBI, TAG_KP2E, TAG_KP2G, TAG_KP2L,
     TAG_KP2N, TAG_KP2R, TAG_KP2S, TAG_KP2V, TAG_KP2W, TAG_KPEE, TAG_KPEG, TAG_KPEL, TAG_KPES,
     TAG_KPEV, TAG_KPLN, TAG_KPLT, TAG_KRAL, TAG_KRCO, TAG_KRHA, TAG_KRHB, TAG_KRVS, TAG_KTAR,
-    TAG_KTAS, TAG_KTAT, TAG_KTTR,
+    TAG_KTAS, TAG_KTAT, TAG_KTTR, read_controller, read_controller_ex, read_cstring,
+    read_first_controller, read_vec3, skip_to,
 };
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::fs::File;
@@ -316,13 +316,20 @@ pub fn read_particle_emitters_2(
             node,
             flags,
             speed,
+            speed_track: TrackId::NONE,
             variation,
+            variation_track: TrackId::NONE,
             latitude,
+            latitude_track: TrackId::NONE,
             gravity,
+            gravity_track: TrackId::NONE,
             life_span,
             emission_rate,
+            emission_rate_track: TrackId::NONE,
             width,
+            width_track: TrackId::NONE,
             length,
+            length_track: TrackId::NONE,
             squirt,
             blend_mode,
             rows,

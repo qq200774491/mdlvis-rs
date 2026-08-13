@@ -1,13 +1,15 @@
 //! M1-W0-MODEL-01 structure tests. Compiled only for the test bin.
 
-use super::chunk::{is_identified_chunk, UnknownChunk};
+use super::chunk::{UnknownChunk, is_identified_chunk};
 use super::ids::{
     Extent, GeosetAnimIndex, GeosetIndex, GlobalSeqId, MaterialIndex, ObjectId, ParentId,
     TextureAnimIndex, TextureIndex, TrackId,
 };
 use super::model::Model;
 use super::node::{NodeFlags, NodeKind, NodeRef, TYPE_ATCH, TYPE_BONE};
-use super::objects::{LayerRef, LightType, MaterialFlags, SequenceExtras, TextureFlags};
+use super::objects::{
+    LayerRef, LightType, MaterialFlags, ParticleEmitter2, SequenceExtras, TextureFlags,
+};
 use super::tracks::{InterpolationType, TrackKind};
 
 #[test]
@@ -36,6 +38,22 @@ fn reference_sentinels_are_negative() {
     assert!(GlobalSeqId::NONE.is_none());
     assert!(!TrackId::from_index(0).is_none());
     assert_ne!(ObjectId(7).0 as usize, 0, "object id is not an array index");
+}
+
+#[test]
+fn particle_emitter_2_tracks_default_to_none() {
+    let emitter = ParticleEmitter2::default();
+    for track in [
+        emitter.speed_track,
+        emitter.variation_track,
+        emitter.latitude_track,
+        emitter.gravity_track,
+        emitter.emission_rate_track,
+        emitter.width_track,
+        emitter.length_track,
+    ] {
+        assert!(track.is_none());
+    }
 }
 
 #[test]
