@@ -290,6 +290,33 @@ fn validate_model(model: &Model) -> Result<(), MdlError> {
     }
     for emitter in &model.particle_emitters_2 {
         validate_node(model, &emitter.node)?;
+        validate_controller_ref(model, "ParticleEmitter2.Speed", emitter.speed_track.0, 1)?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter2.Variation",
+            emitter.variation_track.0,
+            1,
+        )?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter2.Latitude",
+            emitter.latitude_track.0,
+            1,
+        )?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter2.Gravity",
+            emitter.gravity_track.0,
+            1,
+        )?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter2.EmissionRate",
+            emitter.emission_rate_track.0,
+            1,
+        )?;
+        validate_controller_ref(model, "ParticleEmitter2.Width", emitter.width_track.0, 1)?;
+        validate_controller_ref(model, "ParticleEmitter2.Length", emitter.length_track.0, 1)?;
     }
     for ribbon in &model.ribbons {
         validate_node(model, &ribbon.node)?;
@@ -799,7 +826,9 @@ fn write_particle_emitter_2(
     emitter: &ParticleEmitter2,
 ) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
-        write_node(out, model, &emitter.node)?;
+        let mut node = emitter.node.clone();
+        node.visibility = crate::model::ids::TrackId::NONE;
+        write_node(out, model, &node)?;
         out.write_f32::<LittleEndian>(emitter.speed)?;
         out.write_f32::<LittleEndian>(emitter.variation)?;
         out.write_f32::<LittleEndian>(emitter.latitude)?;
@@ -829,8 +858,57 @@ fn write_particle_emitter_2(
         write_controller(
             out,
             model,
+            crate::parser::io::TAG_KP2S,
+            emitter.speed_track.0,
+            false,
+        )?;
+        write_controller(
+            out,
+            model,
+            crate::parser::io::TAG_KP2R,
+            emitter.variation_track.0,
+            false,
+        )?;
+        write_controller(
+            out,
+            model,
+            crate::parser::io::TAG_KP2L,
+            emitter.latitude_track.0,
+            false,
+        )?;
+        write_controller(
+            out,
+            model,
+            crate::parser::io::TAG_KP2G,
+            emitter.gravity_track.0,
+            false,
+        )?;
+        write_controller(
+            out,
+            model,
+            crate::parser::io::TAG_KP2E,
+            emitter.emission_rate_track.0,
+            false,
+        )?;
+        write_controller(
+            out,
+            model,
             crate::parser::io::TAG_KP2V,
             emitter.node.visibility.0,
+            false,
+        )?;
+        write_controller(
+            out,
+            model,
+            crate::parser::io::TAG_KP2N,
+            emitter.length_track.0,
+            false,
+        )?;
+        write_controller(
+            out,
+            model,
+            crate::parser::io::TAG_KP2W,
+            emitter.width_track.0,
             false,
         )?;
         Ok(())
@@ -970,8 +1048,8 @@ fn write_collision(
 mod tests {
     use super::*;
     use crate::model::chunk::UnknownChunk;
-    use crate::model::ids::TrackId;
-    use crate::model::objects::{GlobalSequence, TextureAnim};
+    use crate::model::ids::{TextureIndex, TrackId};
+    use crate::model::objects::{GlobalSequence, ParticleEmitter2, TextureAnim};
     use crate::model::skeleton::Keyframe;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1054,21 +1132,88 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "G1 diagnostic: PRE2 controllers are loaded but not retained as writable references"]
-    fn tracked_model_exposes_orphan_controller_loss() {
+    fn tracked_model_preserves_pre2_animated_fields() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("test-data")
             .join("Nether Blast/Nether Blast I.mdx");
         let mut file = File::open(path).expect("open tracked VERS 800 sample");
         let original = crate::parser::load::load(&mut file).expect("load tracked sample");
+        assert!(original.particle_emitters_2.iter().all(|emitter| {
+            emitter.emission_rate_track.0 >= 0
+                && emitter.speed_track.is_none()
+                && emitter.variation_track.is_none()
+                && emitter.latitude_track.is_none()
+                && emitter.gravity_track.is_none()
+                && emitter.width_track.is_none()
+                && emitter.length_track.is_none()
+        }));
         let reloaded = round_trip(&original);
 
         assert_eq!(original.controllers.len(), 20);
-        assert_eq!(reloaded.controllers.len(), 11);
-        assert_ne!(
+        assert_eq!(reloaded.controllers.len(), 20);
+        let original_value = serde_json::to_value(&original).expect("serialize original Model");
+        let reloaded_value = serde_json::to_value(&reloaded).expect("serialize reloaded Model");
+        for (field, expected) in original_value.as_object().expect("Model is an object") {
+            assert_eq!(
+                reloaded_value.get(field),
+                Some(expected),
+                "round-trip changed Model field {field}"
+            );
+        }
+        assert_eq!(reloaded_value, original_value,);
+    }
+
+    #[test]
+    fn all_pre2_animated_fields_survive_full_model_round_trip() {
+        let mut model = Model {
+            name: "PRE2 animated fields".to_string(),
+            controllers: (1..=8)
+                .map(|value| controller(-1, vec![value as f32]))
+                .collect(),
+            ..Model::default()
+        };
+        let mut emitter = ParticleEmitter2 {
+            texture_id: Some(TextureIndex(0)),
+            speed_track: TrackId(0),
+            variation_track: TrackId(1),
+            latitude_track: TrackId(2),
+            gravity_track: TrackId(3),
+            emission_rate_track: TrackId(4),
+            length_track: TrackId(6),
+            width_track: TrackId(7),
+            ..ParticleEmitter2::default()
+        };
+        emitter.node.visibility = TrackId(5);
+        model.particle_emitters_2.push(emitter);
+
+        let reloaded = round_trip(&model);
+
+        assert_eq!(
             serde_json::to_value(&reloaded).expect("serialize reloaded Model"),
-            serde_json::to_value(&original).expect("serialize original Model")
+            serde_json::to_value(&model).expect("serialize original Model")
         );
+    }
+
+    #[test]
+    fn pre2_animated_fields_are_validated() {
+        let mut invalid_index = Model::default();
+        invalid_index.particle_emitters_2.push(ParticleEmitter2 {
+            speed_track: TrackId(999),
+            ..ParticleEmitter2::default()
+        });
+        let err = serialize(&invalid_index).expect_err("PRE2 controller index must be valid");
+        assert_eq!(err.key, "mdx-invalid-controller-index");
+
+        let mut invalid_width = Model {
+            controllers: vec![controller(-1, vec![1.0, 2.0])],
+            ..Model::default()
+        };
+        invalid_width.particle_emitters_2.push(ParticleEmitter2 {
+            emission_rate_track: TrackId(0),
+            ..ParticleEmitter2::default()
+        });
+        let err = serialize(&invalid_width).expect_err("PRE2 track width must be scalar");
+        assert_eq!(err.key, "mdx-invalid-track-width");
     }
 
     #[test]

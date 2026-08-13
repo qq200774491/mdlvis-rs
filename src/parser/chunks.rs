@@ -4,7 +4,7 @@ use crate::model::ids::{
     Extent, GeosetIndex, GlobalSeqId, MaterialIndex, ObjectId, ParentId, TextureIndex, TrackId,
 };
 use crate::model::model::Model;
-use crate::model::node::{NodeFlags, NodeRef};
+use crate::model::node::{NodeFlags, NodeRef, TYPE_LITE};
 use crate::model::objects::{
     Attachment, Camera, CollisionShape, CollisionType, EventObject, GeosetAnim, GlobalSequence,
     Light, LightType, ParticleEmitter, ParticleEmitter2, ParticleEmitter2Flags, RibbonEmitter,
@@ -142,6 +142,7 @@ pub fn read_lights(file: &mut File, model: &mut Model, size: u32) -> Result<(), 
         let start = file.stream_position()?;
         let inclusive = file.read_u32::<LittleEndian>()? as u64;
         let mut node = read_node(file, model)?;
+        node.flags = NodeFlags::from_bits(node.flags.bits() | TYPE_LITE);
         let light_type = LightType::from_disk(file.read_u32::<LittleEndian>()?)
             .unwrap_or(LightType::Omnidirectional);
         let attenuation_start = file.read_f32::<LittleEndian>()?;
@@ -295,19 +296,47 @@ pub fn read_particle_emitters_2(
         let squirt = file.read_u32::<LittleEndian>()? != 0;
         let priority_plane = file.read_i32::<LittleEndian>()?;
         let replaceable_id = file.read_u32::<LittleEndian>()?;
+        let mut speed_track = TrackId::NONE;
+        let mut variation_track = TrackId::NONE;
+        let mut latitude_track = TrackId::NONE;
+        let mut gravity_track = TrackId::NONE;
+        let mut emission_rate_track = TrackId::NONE;
+        let mut length_track = TrackId::NONE;
+        let mut width_track = TrackId::NONE;
         loop {
             let before = file.stream_position()?;
-            let _ = read_controller(file, model, TAG_KP2R, 1)?;
-            let _ = read_controller(file, model, TAG_KP2L, 1)?;
-            let _ = read_controller(file, model, TAG_KP2G, 1)?;
+            let variation = read_controller(file, model, TAG_KP2R, 1)?;
+            if variation >= 0 {
+                variation_track = track(variation);
+            }
+            let latitude = read_controller(file, model, TAG_KP2L, 1)?;
+            if latitude >= 0 {
+                latitude_track = track(latitude);
+            }
+            let gravity = read_controller(file, model, TAG_KP2G, 1)?;
+            if gravity >= 0 {
+                gravity_track = track(gravity);
+            }
             let visibility = read_controller(file, model, TAG_KP2V, 1)?;
             if visibility >= 0 && node.visibility.is_none() {
                 node.visibility = track(visibility);
             }
-            let _ = read_controller(file, model, TAG_KP2E, 1)?;
-            let _ = read_controller(file, model, TAG_KP2S, 1)?;
-            let _ = read_controller(file, model, TAG_KP2N, 1)?;
-            let _ = read_controller(file, model, TAG_KP2W, 1)?;
+            let emission_rate_controller = read_controller(file, model, TAG_KP2E, 1)?;
+            if emission_rate_controller >= 0 {
+                emission_rate_track = track(emission_rate_controller);
+            }
+            let speed_controller = read_controller(file, model, TAG_KP2S, 1)?;
+            if speed_controller >= 0 {
+                speed_track = track(speed_controller);
+            }
+            let length_controller = read_controller(file, model, TAG_KP2N, 1)?;
+            if length_controller >= 0 {
+                length_track = track(length_controller);
+            }
+            let width_controller = read_controller(file, model, TAG_KP2W, 1)?;
+            if width_controller >= 0 {
+                width_track = track(width_controller);
+            }
             if file.stream_position()? == before {
                 break;
             }
@@ -316,20 +345,20 @@ pub fn read_particle_emitters_2(
             node,
             flags,
             speed,
-            speed_track: TrackId::NONE,
+            speed_track,
             variation,
-            variation_track: TrackId::NONE,
+            variation_track,
             latitude,
-            latitude_track: TrackId::NONE,
+            latitude_track,
             gravity,
-            gravity_track: TrackId::NONE,
+            gravity_track,
             life_span,
             emission_rate,
-            emission_rate_track: TrackId::NONE,
+            emission_rate_track,
             width,
-            width_track: TrackId::NONE,
+            width_track,
             length,
-            length_track: TrackId::NONE,
+            length_track,
             squirt,
             blend_mode,
             rows,
