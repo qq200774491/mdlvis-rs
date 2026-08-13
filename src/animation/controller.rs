@@ -85,7 +85,11 @@ pub fn sample_quaternion(
         },
     };
     validate_finite(&result)?;
-    Ok(result)
+    if interpolation == InterpolationType::None && quaternion_is_zero(result) {
+        Ok([0.0, 0.0, 0.0, 1.0])
+    } else {
+        Ok(result)
+    }
 }
 
 /// Sample a scalar track and round it using ties-to-even integer semantics.
@@ -200,7 +204,11 @@ fn validate_controller<const N: usize>(
                 .with_arg("frame", key.frame));
         }
         if quaternion {
-            validate_quaternion(&key.data)?;
+            if interpolation == InterpolationType::None {
+                validate_finite(&key.data)?;
+            } else {
+                validate_quaternion(&key.data)?;
+            }
             if interpolation.has_tangents() {
                 validate_quaternion(&key.in_tan)?;
                 validate_quaternion(&key.out_tan)?;
@@ -232,6 +240,10 @@ fn validate_quaternion(value: &[f32]) -> Result<(), MdlError> {
     } else {
         Err(MdlError::new("animation-invalid-quaternion"))
     }
+}
+
+fn quaternion_is_zero(value: [f32; 4]) -> bool {
+    value.iter().all(|component| *component == 0.0)
 }
 
 enum KeySelection<'a> {
@@ -961,6 +973,44 @@ mod typed_sampling_tests {
                 .unwrap_err()
                 .key,
             "animation-invalid-global-sequence-index"
+        );
+    }
+
+    #[test]
+    fn dont_interp_zero_quaternion_matches_original_identity_matrix_semantics() {
+        let mut tracked = model(0, vec![key(0, &[0.0; 4])]);
+        tracked
+            .global_sequences
+            .push(GlobalSequence { duration: 0 });
+        tracked.controllers[0].global_seq_id = 0;
+        let resolved = frame(Some(0), 1000.0, PlaybackMode::Clamp);
+
+        assert_eq!(
+            sample_quaternion(&tracked, TrackId(0), &resolved, [9.0, 9.0, 9.0, 9.0]).unwrap(),
+            [0.0, 0.0, 0.0, 1.0]
+        );
+
+        for interpolation_type in [1, 2, 3] {
+            tracked.controllers[0].interpolation_type = interpolation_type;
+            if interpolation_type >= 2 {
+                tracked.controllers[0].keyframes[0].in_tan = vec![0.0, 0.0, 0.0, 1.0];
+                tracked.controllers[0].keyframes[0].out_tan = vec![0.0, 0.0, 0.0, 1.0];
+            }
+            assert_eq!(
+                sample_quaternion(&tracked, TrackId(0), &resolved, [0.0, 0.0, 0.0, 1.0])
+                    .unwrap_err()
+                    .key,
+                "animation-invalid-quaternion"
+            );
+        }
+
+        tracked.controllers[0].interpolation_type = 0;
+        tracked.controllers[0].keyframes[0].data[0] = f32::NAN;
+        assert_eq!(
+            sample_quaternion(&tracked, TrackId(0), &resolved, [0.0, 0.0, 0.0, 1.0])
+                .unwrap_err()
+                .key,
+            "animation-non-finite-track-value"
         );
     }
 
