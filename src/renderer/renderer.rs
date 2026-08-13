@@ -113,7 +113,7 @@ pub(crate) struct SceneGpu {
 pub struct OffscreenSceneRgba {
     pub width: u32,
     pub height: u32,
-    pub adapter: String,
+    pub adapter: wgpu::AdapterInfo,
     /// Tightly packed RGBA8 rows in top-left origin order.
     pub rgba: Vec<u8>,
 }
@@ -129,7 +129,10 @@ pub async fn render_scene_offscreen(
     options: OffscreenSceneOptions,
 ) -> Result<OffscreenSceneRgba, MdlError> {
     validate_offscreen_options(options)?;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::DX12,
+        ..Default::default()
+    });
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
@@ -139,14 +142,11 @@ pub async fn render_scene_offscreen(
         .await
         .map_err(|error| MdlError::new("renderer-offscreen-adapter-unavailable").push_std(error))?;
     let adapter_info = adapter.get_info();
-    let adapter_label = format!(
-        "{}|{:?}|{:?}|{:04x}:{:04x}",
-        adapter_info.name,
-        adapter_info.backend,
-        adapter_info.device_type,
-        adapter_info.vendor,
-        adapter_info.device
-    );
+    if adapter_info.backend != wgpu::Backend::Dx12 {
+        return Err(MdlError::new("renderer-offscreen-backend-mismatch")
+            .with_arg("expected", "Dx12")
+            .with_arg("actual", format!("{:?}", adapter_info.backend)));
+    }
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
             label: Some("MDLVis offscreen ScenePacket"),
@@ -366,7 +366,7 @@ pub async fn render_scene_offscreen(
     Ok(OffscreenSceneRgba {
         width: options.width,
         height: options.height,
-        adapter: adapter_label,
+        adapter: adapter_info,
         rgba,
     })
 }
@@ -3602,7 +3602,8 @@ mod scene_tests {
         .unwrap();
         assert_eq!((result.width, result.height), (65, 7));
         assert_eq!(result.rgba.len(), 65 * 7 * 4);
-        assert!(!result.adapter.is_empty());
+        assert!(!result.adapter.name.is_empty());
+        assert_eq!(result.adapter.backend, wgpu::Backend::Dx12);
         assert_eq!(result.rgba[0..4], [89, 124, 149, 255]);
         assert_eq!(
             result.rgba[(65 * 6 * 4)..(65 * 6 * 4 + 4)],
@@ -3656,6 +3657,34 @@ mod scene_tests {
         .await
         .unwrap();
         assert_eq!(no_geometry.rgba, result.rgba);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires frozen RTX 3060 DX12 G3 adapter"]
+    async fn offscreen_uses_frozen_rtx3060_dx12() {
+        let empty_scene = packet(Vec::new(), Vec::new());
+        let options = OffscreenSceneOptions {
+            width: 65,
+            height: 7,
+            clear: [0.1, 0.2, 0.3, 1.0],
+            ..Default::default()
+        };
+        let first = render_scene_offscreen(offscreen_input(&empty_scene), options)
+            .await
+            .unwrap();
+        let second = render_scene_offscreen(offscreen_input(&empty_scene), options)
+            .await
+            .unwrap();
+        for result in [&first, &second] {
+            assert_eq!(result.adapter.name, "NVIDIA GeForce RTX 3060");
+            assert_eq!(result.adapter.backend, wgpu::Backend::Dx12);
+            assert_eq!(result.adapter.device_type, wgpu::DeviceType::DiscreteGpu);
+            assert_eq!(result.adapter.vendor, 0x10de);
+            assert_eq!(result.adapter.device, 0x2504);
+            println!("offscreen adapter: {:?}", result.adapter);
+        }
+        assert_eq!(first.adapter, second.adapter);
+        assert_eq!(first.rgba, second.rgba);
     }
 
     #[tokio::test]
