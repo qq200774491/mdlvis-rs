@@ -150,8 +150,8 @@ fn parse_materials(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
         };
         for (layer_body, _) in repeated_blocks(material_body, "Layer") {
             let filter = optional_word(layer_body, "FilterMode").unwrap_or("None");
-            let alpha_track = parse_track(layer_body, "Alpha", model)?;
-            let texture_id_track = parse_track(layer_body, "TextureID", model)?;
+            let alpha_track = parse_track(layer_body, "Alpha", 1, model)?;
+            let texture_id_track = parse_track(layer_body, "TextureID", 1, model)?;
             material.layers.push(Layer {
                 texture_id: optional_number(layer_body, "TextureID")?,
                 filter_mode: parse_filter_mode(filter, layer_body)?,
@@ -180,9 +180,9 @@ fn parse_texture_anims(root: &[Node], model: &mut Model) -> Result<(), MdlError>
         return Ok(());
     };
     for (anim, _) in repeated_blocks(body, "TVertexAnim") {
-        let translation = parse_track(anim, "Translation", model)?;
-        let rotation = parse_track(anim, "Rotation", model)?;
-        let scaling = parse_track(anim, "Scaling", model)?;
+        let translation = parse_track(anim, "Translation", 3, model)?;
+        let rotation = parse_track(anim, "Rotation", 4, model)?;
+        let scaling = parse_track(anim, "Scaling", 3, model)?;
         model.texture_anims.push(TextureAnim {
             translation,
             rotation,
@@ -249,8 +249,8 @@ fn parse_geosets(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
 
 fn parse_geoset_anims(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
     for (body, _) in repeated_blocks(root, "GeosetAnim") {
-        let alpha_track = parse_track(body, "Alpha", model)?;
-        let color_track = parse_track(body, "Color", model)?;
+        let alpha_track = parse_track(body, "Alpha", 1, model)?;
+        let color_track = parse_track(body, "Color", 3, model)?;
         model.geoset_anims.push(GeosetAnim {
             geoset_id: optional_number::<u32>(body, "GeosetId")?.map(GeosetIndex),
             alpha: optional_number(body, "Alpha")?.unwrap_or(1.0),
@@ -311,12 +311,12 @@ fn parse_lights(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
         } else {
             LightType::Omnidirectional
         };
-        let attenuation_start_track = parse_track(body, "AttenuationStart", model)?;
-        let attenuation_end_track = parse_track(body, "AttenuationEnd", model)?;
-        let intensity_track = parse_track(body, "Intensity", model)?;
-        let color_track = parse_track(body, "Color", model)?;
-        let ambient_color_track = parse_track(body, "AmbColor", model)?;
-        let ambient_intensity_track = parse_track(body, "AmbIntensity", model)?;
+        let attenuation_start_track = parse_track(body, "AttenuationStart", 1, model)?;
+        let attenuation_end_track = parse_track(body, "AttenuationEnd", 1, model)?;
+        let intensity_track = parse_track(body, "Intensity", 1, model)?;
+        let color_track = parse_track(body, "Color", 3, model)?;
+        let ambient_color_track = parse_track(body, "AmbColor", 3, model)?;
+        let ambient_intensity_track = parse_track(body, "AmbIntensity", 1, model)?;
         model.lights.push(Light {
             node,
             light_type,
@@ -440,10 +440,10 @@ fn parse_ribbons(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
 fn parse_cameras(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
     for (body, label) in repeated_blocks(root, "Camera") {
         let target = named_block(body, "Target").map(|(nodes, _)| nodes);
-        let translation = parse_track(body, "Translation", model)?;
-        let rotation = parse_track(body, "Rotation", model)?;
+        let translation = parse_track(body, "Translation", 3, model)?;
+        let rotation = parse_track(body, "Rotation", 1, model)?;
         let target_translation = if let Some(nodes) = target {
-            parse_track(nodes, "Translation", model)?
+            parse_track(nodes, "Translation", 3, model)?
         } else {
             TrackId::NONE
         };
@@ -566,14 +566,19 @@ fn parse_node(
         object_id: ObjectId(optional_number(body, "ObjectId")?.unwrap_or(0)),
         parent_id: ParentId(optional_number(body, "Parent")?.unwrap_or(-1)),
         flags: NodeFlags::from_bits(flags),
-        translation: parse_track(body, "Translation", model)?,
-        rotation: parse_track(body, "Rotation", model)?,
-        scaling: parse_track(body, "Scaling", model)?,
-        visibility: parse_track(body, "Visibility", model)?,
+        translation: parse_track(body, "Translation", 3, model)?,
+        rotation: parse_track(body, "Rotation", 4, model)?,
+        scaling: parse_track(body, "Scaling", 3, model)?,
+        visibility: parse_track(body, "Visibility", 1, model)?,
     })
 }
 
-fn parse_track(body: &[Node], name: &str, model: &mut Model) -> Result<TrackId, MdlError> {
+fn parse_track(
+    body: &[Node],
+    name: &str,
+    expected_elements: usize,
+    model: &mut Model,
+) -> Result<TrackId, MdlError> {
     let Some(track) = track_block(body, name) else {
         return Ok(TrackId::NONE);
     };
@@ -599,6 +604,12 @@ fn parse_track(body: &[Node], name: &str, model: &mut Model) -> Result<TrackId, 
         }
         let frame = number(&track[index])?;
         let data = value_numbers(&track[index + 2])?;
+        if data.len() != expected_elements {
+            return Err(MdlError::new("mdl-invalid-track-size")
+                .with_arg("track", name)
+                .with_arg("expected", expected_elements)
+                .with_arg("actual", data.len()));
+        }
         index += 3;
         while index < track.len() && matches!(track[index].kind, NodeKind::Comma) {
             index += 1;
@@ -617,8 +628,10 @@ fn parse_track(body: &[Node], name: &str, model: &mut Model) -> Result<TrackId, 
                 out_tan = value_numbers(required_next(track, index, "OutTan")?)?;
                 index += 2;
             }
-            if in_tan.len() != data.len() || out_tan.len() != data.len() {
-                return Err(MdlError::new("mdl-invalid-tangent-size").with_arg("track", name));
+            if in_tan.len() != expected_elements || out_tan.len() != expected_elements {
+                return Err(MdlError::new("mdl-invalid-tangent-size")
+                    .with_arg("track", name)
+                    .with_arg("expected", expected_elements));
             }
         }
         keyframes.push(Keyframe {

@@ -172,6 +172,49 @@ fn unsupported_and_damaged_inputs_return_errors_without_panicking() {
 }
 
 #[test]
+fn invalid_track_widths_return_errors_without_panicking() {
+    for source in [
+        r#"Version { FormatVersion 800, } Model "x" { } Bone "b" {
+            Translation 1 { Hermite,
+                0: { 1, 2 },
+                InTan { 3, 4 },
+                OutTan { 5, 6 },
+            }
+        }"#,
+        r#"Version { FormatVersion 800, } Model "x" { } Bone "b" {
+            Rotation 1 { Bezier,
+                0: { 1, 2, 3 },
+                InTan { 4, 5, 6 },
+                OutTan { 7, 8, 9 },
+            }
+        }"#,
+        r#"Version { FormatVersion 800, } Model "x" { } Bone "b" {
+            Visibility 1 { Linear,
+                0: { 1, 2 },
+            }
+        }"#,
+        r#"Version { FormatVersion 800, } Model "x" { } Bone "b" {
+            Translation 1 { Hermite,
+                0: { 1, 2, 3 },
+                InTan { 4, 5 },
+                OutTan { 6, 7, 8 },
+            }
+        }"#,
+        r#"Version { FormatVersion 800, } Model "x" { } Bone "b" {
+            Rotation 1 { Bezier,
+                0: { 1, 2, 3, 4 },
+                InTan { 5, 6, 7, 8 },
+                OutTan { 9, 10, 11 },
+            }
+        }"#,
+    ] {
+        let result = catch_unwind(AssertUnwindSafe(|| parse_str(source)));
+        assert!(result.is_ok(), "parser panicked for {source:?}");
+        assert!(result.unwrap().is_err(), "invalid MDL parsed: {source:?}");
+    }
+}
+
+#[test]
 fn accepts_utf8_bom() {
     let model = parse_str("\u{feff}Version { FormatVersion 800, } Model \"bom\" { }")
         .expect("UTF-8 BOM should be accepted");
