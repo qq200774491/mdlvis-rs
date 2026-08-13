@@ -20,7 +20,10 @@ fn require_present(count: &Count) {
 fn assert_repeatable_dump(path: &Path) {
     let first = dump_structure(path).expect("first dump");
     let second = dump_structure(path).expect("second dump");
-    assert_eq!(first, second, "consecutive dumps must be semantically equal");
+    assert_eq!(
+        first, second,
+        "consecutive dumps must be semantically equal"
+    );
     let first_json = first.to_pretty_json().expect("serialize first dump");
     let second_json = second.to_pretty_json().expect("serialize second dump");
     assert_eq!(
@@ -164,11 +167,24 @@ fn load_rejects_unsupported_version() {
 #[test]
 fn structure_dump_is_repeatable() {
     assert_repeatable_dump(&test_data("Nether Blast/Nether Blast I.mdx"));
-    assert_repeatable_dump(&test_data(
-        "Ember Forge  Ember Knight/Ember Forge_opt2.mdx",
-    ));
+    assert_repeatable_dump(&test_data("Ember Forge  Ember Knight/Ember Forge_opt2.mdx"));
     let arthas = test_data("Arthas.mdx");
     if arthas.exists() {
         assert_repeatable_dump(&arthas);
     }
+}
+
+#[test]
+fn loaded_model_exposes_identified_collections() {
+    let model = load_path(&test_data("Nether Blast/Nether Blast I.mdx"))
+        .expect("VERS 800 MDLX still loads");
+    // Parser does not fill these yet. Empty means unparsed, not "chunk absent".
+    assert!(model.global_sequences.is_empty());
+    assert!(model.geoset_anims.is_empty());
+    assert!(model.texture_anims.is_empty());
+    assert!(model.attachments.is_empty());
+    assert!(model.lights.is_empty());
+    assert!(model.particle_emitters_2.is_empty());
+    assert!(model.unknown_chunks.is_empty());
+    assert!(model.pivot_points.is_empty());
 }

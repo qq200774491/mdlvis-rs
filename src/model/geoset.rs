@@ -33,7 +33,7 @@ pub struct Geoset {
     pub minimum_extent: [f32; 3],
     pub maximum_extent: [f32; 3],
     // Animation data
-    pub vertex_groups: Vec<u8>,      // GNDX: Index into matrix_groups for each vertex
+    pub vertex_groups: Vec<u8>, // GNDX: Index into matrix_groups for each vertex
     pub matrix_groups: Vec<Vec<u32>>, // MTGC+MATS: Groups of bone indices
 }
 
