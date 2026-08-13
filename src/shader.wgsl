@@ -20,6 +20,18 @@ var s_diffuse: sampler;
 @group(2) @binding(0)
 var<uniform> material: MaterialUniform;
 
+struct SceneDrawUniform {
+    legacy_team_color: vec4<f32>,
+    legacy_material: vec4<f32>,
+    legacy_padding: vec4<f32>,
+    geoset_color_alpha: vec4<f32>,
+    layer_options: vec4<f32>, // layer alpha, filter, render bits, texture slot
+    texture_transform: mat4x4<f32>,
+};
+
+@group(3) @binding(0)
+var<uniform> scene_draw: SceneDrawUniform;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -106,6 +118,68 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     return final_color;
+}
+
+@vertex
+fn vs_scene(model: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    var pos = model.position;
+    pos.y = -pos.y;
+    out.world_pos = pos;
+    out.clip_position = camera.view_proj * vec4<f32>(pos, 1.0);
+    out.normal = model.normal;
+    out.uv = model.uv;
+    return out;
+}
+
+@fragment
+fn fs_scene(in: VertexOutput) -> @location(0) vec4<f32> {
+    let layer_alpha = scene_draw.layer_options.x;
+    let filter_mode = scene_draw.layer_options.y;
+    let render_bits = u32(scene_draw.layer_options.z);
+    let unshaded = (render_bits & 1u) != 0u;
+    let sphere_env_map = (render_bits & 2u) != 0u;
+    let straight_required = scene_draw.legacy_padding.x > 0.5;
+
+    var base_uv = in.uv;
+    if (sphere_env_map) {
+        let sphere_normal = normalize(vec3<f32>(in.normal.x, -in.normal.y, in.normal.z));
+        let eye_delta = scene_draw.legacy_team_color.xyz - in.world_pos;
+        let eye_distance_squared = dot(eye_delta, eye_delta);
+        var view_dir = vec3<f32>(0.0, 0.0, 1.0);
+        if (eye_distance_squared > 0.0000001) {
+            view_dir = eye_delta * inverseSqrt(eye_distance_squared);
+        }
+        let reflected = reflect(-view_dir, sphere_normal);
+        let denominator = max(2.0 * sqrt(reflected.x * reflected.x + reflected.y * reflected.y + (reflected.z + 1.0) * (reflected.z + 1.0)), 0.00001);
+        base_uv = reflected.xy / denominator + vec2<f32>(0.5, 0.5);
+    }
+    let sample_uv = (scene_draw.texture_transform * vec4<f32>(base_uv, 0.0, 1.0)).xy;
+    let tex_color = textureSample(t_diffuse, s_diffuse, sample_uv);
+    let combined_alpha = tex_color.a * scene_draw.geoset_color_alpha.a * layer_alpha;
+    if (scene_draw.geoset_color_alpha.a < 0.01 || layer_alpha < 0.01) {
+        discard;
+    }
+    if (filter_mode > 0.5 && filter_mode < 1.5 && combined_alpha < 0.75) {
+        discard;
+    }
+
+    let geoset_color = scene_draw.geoset_color_alpha.rgb;
+    var rgb = tex_color.rgb * geoset_color;
+    if (straight_required && tex_color.a > 0.00001) {
+        rgb /= tex_color.a;
+    }
+    if (!unshaded) {
+        let light_dir = normalize(vec3<f32>(1.0, 1.0, 1.0));
+        let normal = normalize(vec3<f32>(in.normal.x, -in.normal.y, in.normal.z));
+        let diffuse = max(dot(normal, light_dir), 0.0);
+        rgb *= 0.3 + 0.7 * diffuse;
+    }
+    // ONE/ONE does not use output alpha. Original Real3D multiplies additive RGB by AAlpha.
+    if (filter_mode > 2.5) {
+        rgb *= layer_alpha;
+    }
+    return vec4<f32>(rgb, combined_alpha);
 }
 
 // Line rendering shaders

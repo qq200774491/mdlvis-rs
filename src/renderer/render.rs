@@ -1,8 +1,63 @@
 use crate::material::{FilterMode, MaterialUniform, ShadingFlags};
 use crate::model::model::Model;
 use crate::renderer::geoset_render_info::GeosetRenderInfo;
+use crate::renderer::geoset_render_info::ScenePipelineState;
 use crate::renderer::renderer::Renderer;
 use egui_wgpu::ScreenDescriptor;
+
+pub(crate) struct ScenePassBindings<'a> {
+    pub camera: &'a wgpu::BindGroup,
+    pub white_texture: &'a wgpu::BindGroup,
+    pub textures: &'a [wgpu::BindGroup],
+    pub legacy_material: &'a wgpu::BindGroup,
+    pub scene_material: &'a wgpu::BindGroup,
+}
+
+pub(crate) fn record_prepared_scene<'pass>(
+    render_pass: &mut wgpu::RenderPass<'pass>,
+    scene: &'pass crate::renderer::renderer::PreparedScene,
+    gpu: &'pass crate::renderer::renderer::SceneGpu,
+    pipelines: &'pass [(ScenePipelineState, wgpu::RenderPipeline)],
+    bindings: ScenePassBindings<'pass>,
+    show_geosets: &[bool],
+) -> Result<(), crate::error::MdlError> {
+    if scene.draws.is_empty() || scene.vertices.is_empty() || scene.indices.is_empty() {
+        return Ok(());
+    }
+    render_pass.set_bind_group(0, bindings.camera, &[]);
+    render_pass.set_vertex_buffer(0, gpu.vertex_buffer.slice(..));
+    render_pass.set_index_buffer(gpu.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+    for draw in &scene.draws {
+        if show_geosets
+            .get(draw.geoset as usize)
+            .is_some_and(|visible| !visible)
+        {
+            continue;
+        }
+        let pipeline = pipelines
+            .iter()
+            .find(|(state, _)| *state == draw.pipeline)
+            .map(|(_, pipeline)| pipeline)
+            .ok_or_else(|| crate::error::MdlError::new("renderer-missing-scene-pipeline"))?;
+        let texture_bind_group = match draw.texture_slot {
+            Some(slot) => bindings.textures.get(slot as usize).ok_or_else(|| {
+                crate::error::MdlError::new("renderer-missing-scene-texture-slot")
+                    .with_arg("slot", slot)
+            })?,
+            None => bindings.white_texture,
+        };
+        render_pass.set_pipeline(pipeline);
+        render_pass.set_bind_group(1, texture_bind_group, &[]);
+        render_pass.set_bind_group(2, bindings.legacy_material, &[]);
+        render_pass.set_bind_group(3, bindings.scene_material, &[draw.uniform_offset]);
+        render_pass.draw_indexed(
+            draw.index_start..draw.index_start + draw.index_count,
+            0,
+            0..1,
+        );
+    }
+    Ok(())
+}
 
 impl Renderer {
     pub fn render(
@@ -53,6 +108,14 @@ impl Renderer {
             0,
             bytemuck::cast_slice(view_proj.as_slice()),
         );
+        let scene_refresh_error = self
+            .refresh_scene_view(crate::renderer::renderer::SceneView {
+                eye: eye.into(),
+                forward: (center - eye).into(),
+            })
+            .err();
+        self.scene_error = scene_refresh_error;
+        let scene_ready = self.scene_error.is_none();
 
         // Helper closure to update material uniform for specific geoset
         // Works with optional model (model_opt): if None, returns defaults
@@ -132,6 +195,7 @@ impl Renderer {
                 label: Some("Render Encoder"),
             });
 
+        let mut scene_record_error = None;
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -174,8 +238,14 @@ impl Renderer {
                 render_pass.draw(0..self.num_lines, 0..1);
             }
 
+            // Scene state was validated by update_scene. Pipeline resources are built exhaustively.
+            let scene_mode = self.scene_prepared.is_some();
+            if scene_ready {
+                scene_record_error = self.record_scene_pass(&mut render_pass, show_geosets).err();
+            }
+
             // Draw model in two passes: opaque first (with depth write), then transparent (without depth write)
-            if let Some(model) = model_opt {
+            if let Some(model) = model_opt.filter(|_| !scene_mode) {
                 if self.num_indices > 0 {
                     render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
                     render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
@@ -404,6 +474,9 @@ impl Renderer {
             self.egui_renderer
                 .render(&mut egui_rpass, &paint_jobs, &screen_desc);
         }
+        if scene_record_error.is_some() {
+            self.scene_error = scene_record_error;
+        }
 
         for id in &textures_delta.free {
             self.egui_renderer.free_texture(id);
@@ -413,5 +486,38 @@ impl Renderer {
         output.present();
 
         Ok(())
+    }
+
+    pub(crate) fn record_scene_pass<'pass>(
+        &'pass self,
+        render_pass: &mut wgpu::RenderPass<'pass>,
+        show_geosets: &[bool],
+    ) -> Result<(), crate::error::MdlError> {
+        let (Some(scene), Some(gpu)) = (&self.scene_prepared, &self.scene_gpu) else {
+            return Ok(());
+        };
+        record_prepared_scene(
+            render_pass,
+            scene,
+            gpu,
+            &self.scene_pipelines,
+            ScenePassBindings {
+                camera: &self.camera_bind_group,
+                white_texture: &self
+                    .scene_texture_resources
+                    .as_ref()
+                    .ok_or_else(|| crate::error::MdlError::new("renderer-missing-scene-textures"))?
+                    .white_bind_group,
+                textures: self
+                    .scene_texture_resources
+                    .as_ref()
+                    .ok_or_else(|| crate::error::MdlError::new("renderer-missing-scene-textures"))?
+                    .bind_groups
+                    .as_slice(),
+                legacy_material: &self.material_bind_group,
+                scene_material: &gpu.uniform_bind_group,
+            },
+            show_geosets,
+        )
     }
 }
