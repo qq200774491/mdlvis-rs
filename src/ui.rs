@@ -27,6 +27,16 @@ impl Ui {
         }
     }
 
+    pub(crate) fn scene_playback(&self) -> (usize, f32, bool, bool, bool) {
+        (
+            self.selected_sequence,
+            self.current_frame,
+            self.is_playing,
+            self.is_looping,
+            self.use_animation,
+        )
+    }
+
     /// Reset animation state when a new model is loaded
     pub fn reset_animation(&mut self, model: &Option<Model>) {
         self.selected_sequence = 0;
