@@ -114,6 +114,7 @@ struct CpuAsset {
     rgba: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct SceneTextureResolver<S> {
     source: S,
     cache: BTreeMap<String, CpuAsset>,
