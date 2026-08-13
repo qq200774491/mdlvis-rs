@@ -1,4 +1,7 @@
 use super::{dump_structure, inspect_mdx, Count, InspectError};
+use crate::error::MdlError;
+use crate::parser::load::load;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 fn test_data(rel: &str) -> PathBuf {
@@ -91,4 +94,57 @@ fn qdmr_is_rejected() {
         Err(InspectError::UnsupportedMagic(magic)) => assert_eq!(&magic, b"EMHM"),
         other => panic!("expected unsupported magic, got {other:?}"),
     }
+}
+
+fn assert_error_key(err: MdlError, key: &str) {
+    assert_eq!(err.key, key, "display={}", err);
+}
+
+fn load_path(path: &Path) -> Result<crate::model::model::Model, MdlError> {
+    let mut file = File::open(path).expect("open sample");
+    load(&mut file)
+}
+
+fn write_temp_mdx(label: &str, bytes: &[u8]) -> PathBuf {
+    let path =
+        std::env::temp_dir().join(format!("mdlvis-rs-g0-{}-{}.mdx", label, std::process::id()));
+    std::fs::write(&path, bytes).expect("write temp mdx");
+    path
+}
+
+#[test]
+fn nether_blast_i_loads() {
+    let path = test_data("Nether Blast/Nether Blast I.mdx");
+    let model = load_path(&path).expect("production load must accept VERS 800 MDLX");
+    assert_eq!(model.geosets.len(), 1);
+    assert_eq!(model.sequences.len(), 1);
+}
+
+#[test]
+fn qdmr_is_rejected_by_load() {
+    let path = test_data("QDMR.mdx");
+    let err = load_path(&path).expect_err("production load must reject non-MDLX");
+    assert_error_key(err, "unsupported-magic");
+}
+
+#[test]
+fn load_rejects_missing_vers() {
+    // Magic only: no chunks, so VERS is absent without triggering a short read
+    // inside a modeled block such as MODL.
+    let path = write_temp_mdx("missing-vers", b"MDLX");
+    let err = load_path(&path).expect_err("production load must require VERS");
+    let _ = std::fs::remove_file(&path);
+    assert_error_key(err, "missing-vers");
+}
+
+#[test]
+fn load_rejects_unsupported_version() {
+    let mut bytes = b"MDLX".to_vec();
+    bytes.extend_from_slice(b"VERS");
+    bytes.extend_from_slice(&4u32.to_le_bytes());
+    bytes.extend_from_slice(&900u32.to_le_bytes());
+    let path = write_temp_mdx("vers-900", &bytes);
+    let err = load_path(&path).expect_err("production load must reject non-800");
+    let _ = std::fs::remove_file(&path);
+    assert_error_key(err, "unsupported-version");
 }

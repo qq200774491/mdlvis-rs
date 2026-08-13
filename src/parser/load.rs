@@ -5,11 +5,24 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 
+const MDX_MAGIC: &[u8; 4] = b"MDLX";
+const SUPPORTED_VERSION: u32 = 800;
+
 pub fn load(file: &mut File) -> Result<Model, MdlError> {
     let mut model = Model::default();
     model.name = "MDX Model".to_string();
 
-    file.seek(SeekFrom::Start(4))?;
+    file.seek(SeekFrom::Start(0))?;
+
+    let mut magic = [0u8; 4];
+    file.read_exact(&mut magic)?;
+    if &magic != MDX_MAGIC {
+        return Err(
+            MdlError::new("unsupported-magic").with_arg("magic", String::from_utf8_lossy(&magic))
+        );
+    }
+
+    let mut seen_vers = false;
 
     loop {
         let mut chunk_type = [0u8; 4];
@@ -22,8 +35,14 @@ pub fn load(file: &mut File) -> Result<Model, MdlError> {
 
         match &chunk_type {
             b"VERS" => {
-                // Version chunk
+                if size < 4 {
+                    return Err(MdlError::new("missing-vers"));
+                }
                 let version = file.read_u32::<LittleEndian>()?;
+                if version != SUPPORTED_VERSION {
+                    return Err(MdlError::new("unsupported-version").with_arg("version", version));
+                }
+                seen_vers = true;
                 println!("MDX Version: {}", version);
             }
             b"MODL" => {
@@ -80,6 +99,10 @@ pub fn load(file: &mut File) -> Result<Model, MdlError> {
         if current_pos < expected_pos {
             file.seek(SeekFrom::Start(expected_pos))?;
         }
+    }
+
+    if !seen_vers {
+        return Err(MdlError::new("missing-vers"));
     }
 
     Ok(model)
