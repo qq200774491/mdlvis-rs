@@ -3,3 +3,4 @@ mod geoset;
 mod io;
 pub mod load;
 pub mod parser;
+pub mod write;

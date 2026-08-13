@@ -1,6 +1,7 @@
 use super::{dump_structure, inspect_mdx, Count, InspectError};
 use crate::error::MdlError;
 use crate::parser::load::load;
+use crate::parser::write::save_path;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -204,4 +205,76 @@ fn loaded_model_exposes_identified_collections() {
     assert!(model.unknown_chunks.is_empty());
     assert_eq!(model.blend_time, 150);
     assert_eq!(model.name, "Nether Blast I");
+}
+
+fn assert_semantic_round_trip(rel: &str) {
+    let path = test_data(rel);
+    let original = load_path(&path).expect("load original");
+    let out = write_temp_mdx("roundtrip", b"");
+    save_path(&out, &original).expect("save MDX 800");
+    let reloaded = load_path(&out).expect("reload written MDX");
+    let _ = std::fs::remove_file(&out);
+
+    assert_eq!(reloaded.name, original.name);
+    assert_eq!(reloaded.blend_time, original.blend_time);
+    assert_eq!(reloaded.sequences.len(), original.sequences.len());
+    assert_eq!(reloaded.geosets.len(), original.geosets.len());
+    assert_eq!(reloaded.vertices_len(), original.vertices_len());
+    assert_eq!(reloaded.bones.len(), original.bones.len());
+    assert_eq!(reloaded.helpers.len(), original.helpers.len());
+    assert_eq!(reloaded.materials.len(), original.materials.len());
+    assert_eq!(reloaded.textures.len(), original.textures.len());
+    assert_eq!(
+        reloaded.global_sequences.len(),
+        original.global_sequences.len()
+    );
+    assert_eq!(reloaded.geoset_anims.len(), original.geoset_anims.len());
+    assert_eq!(reloaded.texture_anims.len(), original.texture_anims.len());
+    assert_eq!(reloaded.attachments.len(), original.attachments.len());
+    assert_eq!(reloaded.lights.len(), original.lights.len());
+    assert_eq!(reloaded.cameras.len(), original.cameras.len());
+    assert_eq!(
+        reloaded.particle_emitters_2.len(),
+        original.particle_emitters_2.len()
+    );
+    assert_eq!(reloaded.ribbons.len(), original.ribbons.len());
+    assert_eq!(reloaded.events.len(), original.events.len());
+    assert_eq!(reloaded.collisions.len(), original.collisions.len());
+    assert_eq!(reloaded.pivot_points.len(), original.pivot_points.len());
+    assert_eq!(reloaded.unknown_chunks.len(), original.unknown_chunks.len());
+}
+
+trait VertexCount {
+    fn vertices_len(&self) -> usize;
+}
+
+impl VertexCount for crate::model::model::Model {
+    fn vertices_len(&self) -> usize {
+        self.geosets
+            .iter()
+            .map(|geoset| geoset.vertices.len())
+            .sum()
+    }
+}
+
+#[test]
+fn nether_blast_i_mdx_round_trip() {
+    assert_semantic_round_trip("Nether Blast/Nether Blast I.mdx");
+}
+
+#[test]
+fn ember_forge_mdx_round_trip() {
+    assert_semantic_round_trip("Ember Forge  Ember Knight/Ember Forge_opt2.mdx");
+}
+
+#[test]
+fn save_always_writes_version_800() {
+    let model = load_path(&test_data("Nether Blast/Nether Blast I.mdx")).expect("load");
+    let out = write_temp_mdx("vers-check", b"");
+    save_path(&out, &model).expect("save");
+    let bytes = std::fs::read(&out).expect("read written file");
+    let _ = std::fs::remove_file(&out);
+    assert_eq!(&bytes[0..4], b"MDLX");
+    assert_eq!(&bytes[4..8], b"VERS");
+    assert_eq!(&bytes[12..16], &800u32.to_le_bytes());
 }
