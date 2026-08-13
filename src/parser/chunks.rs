@@ -7,8 +7,8 @@ use crate::model::model::Model;
 use crate::model::node::{NodeFlags, NodeRef, TYPE_LITE};
 use crate::model::objects::{
     Attachment, Camera, CollisionShape, CollisionType, EventObject, GeosetAnim, GlobalSequence,
-    Light, LightType, ParticleEmitter, ParticleEmitter2, ParticleEmitter2Flags, RibbonEmitter,
-    TextureAnim,
+    Light, LightType, ParticleEmitter, ParticleEmitter2, ParticleEmitter2Flags,
+    ParticleEmitterUses, RibbonEmitter, TextureAnim,
 };
 use crate::parser::io::{
     TAG_KATV, TAG_KCRL, TAG_KCTR, TAG_KGAC, TAG_KGAO, TAG_KGRT, TAG_KGSC, TAG_KGTR, TAG_KLAC,
@@ -217,6 +217,8 @@ pub fn read_particle_emitters(
         let start = file.stream_position()?;
         let inclusive = file.read_u32::<LittleEndian>()? as u64;
         let mut node = read_node(file, model)?;
+        let flags = node.flags.bits();
+        node.flags = NodeFlags::from_bits(flags & !(0x8000 | 0x1_0000));
         let emission_rate = file.read_f32::<LittleEndian>()?;
         let gravity = file.read_f32::<LittleEndian>()?;
         let longitude = file.read_f32::<LittleEndian>()?;
@@ -225,31 +227,54 @@ pub fn read_particle_emitters(
         file.seek(SeekFrom::Current(4))?;
         let life_span = file.read_f32::<LittleEndian>()?;
         let init_velocity = file.read_f32::<LittleEndian>()?;
-        let _ = read_controller(file, model, TAG_KPEE, 1)?;
-        let _ = read_controller(file, model, TAG_KPEG, 1)?;
-        let _ = read_controller(file, model, TAG_KPLN, 1)?;
-        let _ = read_controller(file, model, TAG_KPLT, 1)?;
-        let _ = read_controller(file, model, TAG_KPEL, 1)?;
-        let _ = read_controller(file, model, TAG_KPES, 1)?;
-        let visibility = read_controller(file, model, TAG_KPEV, 1)?;
-        if node.visibility.is_none() {
-            node.visibility = track(visibility);
+        let mut emission_rate_track = TrackId::NONE;
+        let mut gravity_track = TrackId::NONE;
+        let mut longitude_track = TrackId::NONE;
+        let mut latitude_track = TrackId::NONE;
+        let mut life_span_track = TrackId::NONE;
+        let mut init_velocity_track = TrackId::NONE;
+        loop {
+            let before = file.stream_position()?;
+            for (tag, target) in [
+                (TAG_KPEE, &mut emission_rate_track),
+                (TAG_KPEG, &mut gravity_track),
+                (TAG_KPLN, &mut longitude_track),
+                (TAG_KPLT, &mut latitude_track),
+                (TAG_KPEL, &mut life_span_track),
+                (TAG_KPES, &mut init_velocity_track),
+            ] {
+                let controller = read_controller(file, model, tag, 1)?;
+                if controller >= 0 {
+                    *target = track(controller);
+                }
+            }
+            let visibility = read_controller(file, model, TAG_KPEV, 1)?;
+            if visibility >= 0 && node.visibility.is_none() {
+                node.visibility = track(visibility);
+            }
+            if file.stream_position()? == before {
+                break;
+            }
         }
         model.particle_emitters.push(ParticleEmitter {
             node,
-            uses_type: Default::default(),
+            uses_type: if flags & 0x8000 != 0 {
+                ParticleEmitterUses::Mdl
+            } else {
+                ParticleEmitterUses::Tga
+            },
             emission_rate,
-            emission_rate_track: TrackId::NONE,
+            emission_rate_track,
             gravity,
-            gravity_track: TrackId::NONE,
+            gravity_track,
             longitude,
-            longitude_track: TrackId::NONE,
+            longitude_track,
             latitude,
-            latitude_track: TrackId::NONE,
+            latitude_track,
             life_span,
-            life_span_track: TrackId::NONE,
+            life_span_track,
             init_velocity,
-            init_velocity_track: TrackId::NONE,
+            init_velocity_track,
             path,
         });
         skip_to(file, start + inclusive)?;
@@ -406,24 +431,41 @@ pub fn read_ribbons(file: &mut File, model: &mut Model, size: u32) -> Result<(),
         let columns = file.read_u32::<LittleEndian>()?;
         let material_id = file.read_u32::<LittleEndian>()?;
         let gravity = file.read_f32::<LittleEndian>()?;
-        let _ = read_controller(file, model, TAG_KRHA, 1)?;
-        let _ = read_controller(file, model, TAG_KRHB, 1)?;
-        let _ = read_controller(file, model, TAG_KRAL, 1)?;
-        let _ = read_controller(file, model, TAG_KRCO, 3)?;
-        let visibility = read_controller(file, model, TAG_KRVS, 1)?;
-        if node.visibility.is_none() {
-            node.visibility = track(visibility);
+        let mut height_above_track = TrackId::NONE;
+        let mut height_below_track = TrackId::NONE;
+        let mut alpha_track = TrackId::NONE;
+        let mut color_track = TrackId::NONE;
+        loop {
+            let before = file.stream_position()?;
+            for (tag, width, target) in [
+                (TAG_KRHA, 1, &mut height_above_track),
+                (TAG_KRHB, 1, &mut height_below_track),
+                (TAG_KRAL, 1, &mut alpha_track),
+                (TAG_KRCO, 3, &mut color_track),
+            ] {
+                let controller = read_controller(file, model, tag, width)?;
+                if controller >= 0 {
+                    *target = track(controller);
+                }
+            }
+            let visibility = read_controller(file, model, TAG_KRVS, 1)?;
+            if visibility >= 0 && node.visibility.is_none() {
+                node.visibility = track(visibility);
+            }
+            if file.stream_position()? == before {
+                break;
+            }
         }
         model.ribbons.push(RibbonEmitter {
             node,
             height_above,
-            height_above_track: TrackId::NONE,
+            height_above_track,
             height_below,
-            height_below_track: TrackId::NONE,
+            height_below_track,
             alpha,
-            alpha_track: TrackId::NONE,
+            alpha_track,
             color,
-            color_track: TrackId::NONE,
+            color_track,
             texture_slot,
             texture_slot_track: TrackId::NONE,
             emission_rate,

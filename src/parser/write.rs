@@ -8,13 +8,14 @@ use crate::model::node::{
 };
 use crate::model::objects::{
     Attachment, Camera, CollisionShape, CollisionType, EventObject, GeosetAnim, Light,
-    ParticleEmitter, ParticleEmitter2, RibbonEmitter, TextureAnim,
+    ParticleEmitter, ParticleEmitter2, ParticleEmitterUses, RibbonEmitter, TextureAnim,
 };
 use crate::model::skeleton::{AnimationController, Bone, Helper};
 use crate::parser::io::{
     TAG_KATV, TAG_KCRL, TAG_KCTR, TAG_KGAC, TAG_KGAO, TAG_KGRT, TAG_KGSC, TAG_KGTR, TAG_KLAC,
-    TAG_KLAE, TAG_KLAI, TAG_KLAS, TAG_KLAV, TAG_KLBC, TAG_KLBI, TAG_KMTA, TAG_KMTF, TAG_KPEV,
-    TAG_KRVS, TAG_KTAR, TAG_KTAS, TAG_KTAT, TAG_KTTR,
+    TAG_KLAE, TAG_KLAI, TAG_KLAS, TAG_KLAV, TAG_KLBC, TAG_KLBI, TAG_KMTA, TAG_KMTF, TAG_KPEE,
+    TAG_KPEG, TAG_KPEL, TAG_KPES, TAG_KPEV, TAG_KPLN, TAG_KPLT, TAG_KRAL, TAG_KRCO, TAG_KRHA,
+    TAG_KRHB, TAG_KRVS, TAG_KTAR, TAG_KTAS, TAG_KTAT, TAG_KTTR,
 };
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::fs::File;
@@ -72,6 +73,12 @@ fn write_model(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> 
     write_cameras(file, model)?;
     write_events(file, model)?;
     write_collisions(file, model)?;
+    if let Some(data) = &model.mdlvis_data {
+        write_chunk(file, b"MDVI", |out| {
+            out.write_all(data)?;
+            Ok(())
+        })?;
+    }
     for chunk in &model.unknown_chunks {
         file.write_all(&chunk.fourcc)?;
         file.write_u32::<LittleEndian>(u32::try_from(chunk.data.len()).map_err(|_| {
@@ -287,6 +294,37 @@ fn validate_model(model: &Model) -> Result<(), MdlError> {
     }
     for emitter in &model.particle_emitters {
         validate_node(model, &emitter.node)?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter.EmissionRate",
+            emitter.emission_rate_track.0,
+            1,
+        )?;
+        validate_controller_ref(model, "ParticleEmitter.Gravity", emitter.gravity_track.0, 1)?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter.Longitude",
+            emitter.longitude_track.0,
+            1,
+        )?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter.Latitude",
+            emitter.latitude_track.0,
+            1,
+        )?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter.LifeSpan",
+            emitter.life_span_track.0,
+            1,
+        )?;
+        validate_controller_ref(
+            model,
+            "ParticleEmitter.InitVelocity",
+            emitter.init_velocity_track.0,
+            1,
+        )?;
     }
     for emitter in &model.particle_emitters_2 {
         validate_node(model, &emitter.node)?;
@@ -320,6 +358,26 @@ fn validate_model(model: &Model) -> Result<(), MdlError> {
     }
     for ribbon in &model.ribbons {
         validate_node(model, &ribbon.node)?;
+        validate_controller_ref(
+            model,
+            "RibbonEmitter.HeightAbove",
+            ribbon.height_above_track.0,
+            1,
+        )?;
+        validate_controller_ref(
+            model,
+            "RibbonEmitter.HeightBelow",
+            ribbon.height_below_track.0,
+            1,
+        )?;
+        validate_controller_ref(model, "RibbonEmitter.Alpha", ribbon.alpha_track.0, 1)?;
+        validate_controller_ref(model, "RibbonEmitter.Color", ribbon.color_track.0, 3)?;
+        if !ribbon.texture_slot_track.is_none() {
+            return Err(
+                MdlError::new("mdx-ribbon-texture-slot-track-not-representable")
+                    .with_arg("index", ribbon.texture_slot_track.0),
+            );
+        }
     }
     for camera in &model.cameras {
         validate_controller_ref(
@@ -338,10 +396,20 @@ fn validate_model(model: &Model) -> Result<(), MdlError> {
         validate_node(model, &collision.node)?;
     }
     for chunk in &model.unknown_chunks {
+        if chunk.fourcc == *b"MDVI" {
+            return Err(MdlError::new("mdx-mdvi-in-unknown-chunks"));
+        }
         u32::try_from(chunk.data.len()).map_err(|_| {
             MdlError::new("mdx-chunk-too-large")
                 .with_arg("fourcc", chunk.fourcc_str())
                 .with_arg("size", chunk.data.len())
+        })?;
+    }
+    if let Some(data) = &model.mdlvis_data {
+        u32::try_from(data.len()).map_err(|_| {
+            MdlError::new("mdx-chunk-too-large")
+                .with_arg("fourcc", "MDVI")
+                .with_arg("size", data.len())
         })?;
     }
     Ok(())
@@ -716,6 +784,7 @@ fn write_light(file: &mut dyn WriteSeek, model: &Model, light: &Light) -> Result
     write_inclusive(file, |out| {
         let mut node = light.node.clone();
         node.flags = crate::model::node::NodeFlags::from_bits(node.flags.bits() | TYPE_LITE);
+        node.visibility = crate::model::ids::TrackId::NONE;
         write_node(out, model, &node)?;
         out.write_u32::<LittleEndian>(light.light_type as u32)?;
         out.write_f32::<LittleEndian>(light.attenuation_start)?;
@@ -755,6 +824,7 @@ fn write_attachment(
     write_inclusive(file, |out| {
         let mut node = attachment.node.clone();
         node.flags = crate::model::node::NodeFlags::from_bits(node.flags.bits() | TYPE_ATCH);
+        node.visibility = crate::model::ids::TrackId::NONE;
         write_node(out, model, &node)?;
         write_padded(out, &attachment.path, 0x100)?;
         out.write_u32::<LittleEndian>(0)?;
@@ -794,7 +864,16 @@ fn write_particle_emitter(
     emitter: &ParticleEmitter,
 ) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
-        write_node(out, model, &emitter.node)?;
+        let mut node = emitter.node.clone();
+        node.visibility = crate::model::ids::TrackId::NONE;
+        let uses_bits = match emitter.uses_type {
+            ParticleEmitterUses::Tga => 0x1_0000,
+            ParticleEmitterUses::Mdl => 0x8000,
+        };
+        node.flags = crate::model::node::NodeFlags::from_bits(
+            (node.flags.bits() & !(0x8000 | 0x1_0000)) | uses_bits,
+        );
+        write_node(out, model, &node)?;
         out.write_f32::<LittleEndian>(emitter.emission_rate)?;
         out.write_f32::<LittleEndian>(emitter.gravity)?;
         out.write_f32::<LittleEndian>(emitter.longitude)?;
@@ -803,6 +882,12 @@ fn write_particle_emitter(
         out.write_u32::<LittleEndian>(0)?;
         out.write_f32::<LittleEndian>(emitter.life_span)?;
         out.write_f32::<LittleEndian>(emitter.init_velocity)?;
+        write_controller(out, model, TAG_KPEE, emitter.emission_rate_track.0, false)?;
+        write_controller(out, model, TAG_KPEG, emitter.gravity_track.0, false)?;
+        write_controller(out, model, TAG_KPLN, emitter.longitude_track.0, false)?;
+        write_controller(out, model, TAG_KPLT, emitter.latitude_track.0, false)?;
+        write_controller(out, model, TAG_KPEL, emitter.life_span_track.0, false)?;
+        write_controller(out, model, TAG_KPES, emitter.init_velocity_track.0, false)?;
         write_controller(out, model, TAG_KPEV, emitter.node.visibility.0, false)?;
         Ok(())
     })
@@ -933,7 +1018,9 @@ fn write_ribbon(
     ribbon: &RibbonEmitter,
 ) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
-        write_node(out, model, &ribbon.node)?;
+        let mut node = ribbon.node.clone();
+        node.visibility = crate::model::ids::TrackId::NONE;
+        write_node(out, model, &node)?;
         out.write_f32::<LittleEndian>(ribbon.height_above)?;
         out.write_f32::<LittleEndian>(ribbon.height_below)?;
         out.write_f32::<LittleEndian>(ribbon.alpha)?;
@@ -945,6 +1032,10 @@ fn write_ribbon(
         out.write_u32::<LittleEndian>(ribbon.columns)?;
         out.write_u32::<LittleEndian>(ribbon.material_id.map(|id| id.0).unwrap_or(0))?;
         out.write_f32::<LittleEndian>(ribbon.gravity)?;
+        write_controller(out, model, TAG_KRHA, ribbon.height_above_track.0, false)?;
+        write_controller(out, model, TAG_KRHB, ribbon.height_below_track.0, false)?;
+        write_controller(out, model, TAG_KRAL, ribbon.alpha_track.0, false)?;
+        write_controller(out, model, TAG_KRCO, ribbon.color_track.0, false)?;
         write_controller(out, model, TAG_KRVS, ribbon.node.visibility.0, false)?;
         Ok(())
     })
@@ -1048,8 +1139,12 @@ fn write_collision(
 mod tests {
     use super::*;
     use crate::model::chunk::UnknownChunk;
-    use crate::model::ids::{TextureIndex, TrackId};
-    use crate::model::objects::{GlobalSequence, ParticleEmitter2, TextureAnim};
+    use crate::model::ids::{MaterialIndex, TextureIndex, TrackId};
+    use crate::model::node::{NodeFlags, NodeRef};
+    use crate::model::objects::{
+        GlobalSequence, ParticleEmitter, ParticleEmitter2, ParticleEmitterUses, RibbonEmitter,
+        TextureAnim,
+    };
     use crate::model::skeleton::Keyframe;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1103,6 +1198,58 @@ mod tests {
         let loaded = crate::parser::load::load(&mut file).expect("reload written MDX");
         fs::remove_file(path).expect("remove temporary MDX");
         loaded
+    }
+
+    fn scalar_controllers(count: usize) -> Vec<AnimationController> {
+        (1..=count)
+            .map(|value| controller(-1, vec![value as f32]))
+            .collect()
+    }
+
+    fn tracked_sample(relative: &str) -> Model {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test-data")
+            .join(relative);
+        let mut file = File::open(path).expect("open tracked VERS 800 sample");
+        crate::parser::load::load(&mut file).expect("load tracked sample")
+    }
+
+    fn assert_models_equal(actual: &Model, expected: &Model, context: &str) {
+        let actual_value = serde_json::to_value(actual).expect("serialize actual Model");
+        let expected_value = serde_json::to_value(expected).expect("serialize expected Model");
+        for (field, expected_field) in expected_value.as_object().expect("Model is an object") {
+            if actual_value.get(field) != Some(expected_field) {
+                let detail = if field == "controllers" {
+                    let actual_controllers = actual_value[field]
+                        .as_array()
+                        .expect("controllers are an array");
+                    let expected_controllers =
+                        expected_field.as_array().expect("controllers are an array");
+                    let first_difference = actual_controllers
+                        .iter()
+                        .zip(expected_controllers)
+                        .position(|(left, right)| left != right);
+                    let expected_detail = first_difference
+                        .and_then(|index| expected_controllers.get(index))
+                        .cloned();
+                    let actual_detail = first_difference
+                        .and_then(|index| actual_controllers.get(index))
+                        .cloned();
+                    format!(
+                        "controller counts {} != {}, first difference {:?}: actual {:?}, expected {:?}",
+                        actual_controllers.len(),
+                        expected_controllers.len(),
+                        first_difference,
+                        actual_detail,
+                        expected_detail
+                    )
+                } else {
+                    String::new()
+                };
+                panic!("{context}: round-trip changed Model field {field}: {detail}");
+            }
+        }
+        assert_eq!(actual_value, expected_value, "{context}");
     }
 
     #[test]
@@ -1292,5 +1439,196 @@ mod tests {
         assert!(!missing.exists());
 
         fs::remove_file(existing).expect("remove existing target");
+    }
+
+    #[test]
+    fn tracked_prem_and_ribbon_models_survive_first_full_model_round_trip() {
+        for relative in [
+            "Ember Forge  Ember Knight/Ember Forge_opt2.mdx",
+            "Ember Forge  Ember Knight/Ember Knight/Ember Knight_opt2.mdx",
+            "Ember Forge  Ember Knight/Fire_Stream.mdx",
+            "Nether Blast/Nether Blast III.mdx",
+        ] {
+            let original = tracked_sample(relative);
+            let reloaded = round_trip(&original);
+            assert_models_equal(&reloaded, &original, relative);
+        }
+    }
+
+    #[test]
+    fn all_prem_and_ribbon_animated_fields_survive_full_model_round_trip() {
+        let mut model = Model {
+            name: "PREM and RIBB animated fields".to_string(),
+            controllers: scalar_controllers(12),
+            ..Model::default()
+        };
+        model.controllers[10] = controller(-1, vec![0.1, 0.2, 0.3]);
+
+        let mut particle = ParticleEmitter {
+            node: NodeRef {
+                name: "Particle".to_string(),
+                flags: NodeFlags::from_bits(0x1000),
+                visibility: TrackId(6),
+                ..NodeRef::default()
+            },
+            uses_type: ParticleEmitterUses::Mdl,
+            emission_rate_track: TrackId(0),
+            gravity_track: TrackId(1),
+            longitude_track: TrackId(2),
+            latitude_track: TrackId(3),
+            life_span_track: TrackId(4),
+            init_velocity_track: TrackId(5),
+            path: "Particles\\Animated.mdl".to_string(),
+            ..ParticleEmitter::default()
+        };
+        particle.node.object_id.0 = 1;
+        model.particle_emitters.push(particle);
+
+        let mut ribbon = RibbonEmitter {
+            node: NodeRef {
+                name: "Ribbon".to_string(),
+                flags: NodeFlags::from_bits(0x4000),
+                visibility: TrackId(11),
+                ..NodeRef::default()
+            },
+            height_above_track: TrackId(7),
+            height_below_track: TrackId(8),
+            alpha_track: TrackId(9),
+            color_track: TrackId(10),
+            material_id: Some(MaterialIndex(0)),
+            ..RibbonEmitter::default()
+        };
+        ribbon.node.object_id.0 = 2;
+        model.ribbons.push(ribbon);
+
+        let reloaded = round_trip(&model);
+        assert_eq!(
+            serde_json::to_value(&reloaded).expect("serialize reloaded Model"),
+            serde_json::to_value(&model).expect("serialize original Model")
+        );
+    }
+
+    #[test]
+    fn prem_and_ribbon_animated_fields_are_fully_validated() {
+        let mut invalid_index = Model::default();
+        invalid_index.particle_emitters.push(ParticleEmitter {
+            emission_rate_track: TrackId(999),
+            ..ParticleEmitter::default()
+        });
+        let err = serialize(&invalid_index).expect_err("PREM controller index must be valid");
+        assert_eq!(err.key, "mdx-invalid-controller-index");
+
+        let mut invalid_width = Model {
+            controllers: vec![controller(-1, vec![1.0, 2.0])],
+            ..Model::default()
+        };
+        invalid_width.ribbons.push(RibbonEmitter {
+            color_track: TrackId(0),
+            ..RibbonEmitter::default()
+        });
+        let err = serialize(&invalid_width).expect_err("RIBB color track must have width three");
+        assert_eq!(err.key, "mdx-invalid-track-width");
+
+        let mut invalid_tangent = controller(-1, vec![1.0]);
+        invalid_tangent.interpolation_type = 2;
+        invalid_tangent.keyframes[0].in_tan.clear();
+        invalid_tangent.keyframes[0].out_tan = vec![0.0];
+        let mut invalid_tangent_model = Model {
+            controllers: vec![invalid_tangent],
+            ..Model::default()
+        };
+        invalid_tangent_model.ribbons.push(RibbonEmitter {
+            alpha_track: TrackId(0),
+            ..RibbonEmitter::default()
+        });
+        let err = serialize(&invalid_tangent_model).expect_err("RIBB tangent width must be valid");
+        assert_eq!(err.key, "mdx-invalid-tangent-width");
+
+        let mut invalid_global = Model {
+            controllers: vec![controller(0, vec![1.0])],
+            ..Model::default()
+        };
+        invalid_global.particle_emitters.push(ParticleEmitter {
+            gravity_track: TrackId(0),
+            ..ParticleEmitter::default()
+        });
+        let err = serialize(&invalid_global).expect_err("PREM global sequence must exist");
+        assert_eq!(err.key, "mdx-invalid-global-sequence-index");
+
+        let mut invalid_interpolation_controller = controller(-1, vec![1.0]);
+        invalid_interpolation_controller.interpolation_type = 99;
+        let mut invalid_interpolation = Model {
+            controllers: vec![invalid_interpolation_controller],
+            ..Model::default()
+        };
+        invalid_interpolation
+            .particle_emitters
+            .push(ParticleEmitter {
+                life_span_track: TrackId(0),
+                ..ParticleEmitter::default()
+            });
+        let err = serialize(&invalid_interpolation).expect_err("PREM interpolation must be valid");
+        assert_eq!(err.key, "mdx-invalid-interpolation-type");
+    }
+
+    #[test]
+    fn dynamic_ribbon_texture_slot_is_rejected_without_touching_targets() {
+        let mut model = Model {
+            controllers: scalar_controllers(1),
+            ..Model::default()
+        };
+        model.ribbons.push(RibbonEmitter {
+            texture_slot_track: TrackId(0),
+            ..RibbonEmitter::default()
+        });
+        let existing = temp_path("dynamic-texture-slot-existing");
+        let missing = temp_path("dynamic-texture-slot-missing");
+        fs::write(&existing, b"keep me").expect("create existing target");
+        let _ = fs::remove_file(&missing);
+
+        let err = serialize(&model).expect_err("dynamic texture slot cannot be represented in MDX");
+        assert_eq!(err.key, "mdx-ribbon-texture-slot-track-not-representable");
+        assert!(save_path(&existing, &model).is_err());
+        assert_eq!(
+            fs::read(&existing).expect("read existing target"),
+            b"keep me"
+        );
+        assert!(save_path(&missing, &model).is_err());
+        assert!(!missing.exists());
+
+        fs::remove_file(existing).expect("remove existing target");
+    }
+
+    #[test]
+    fn mdlvis_payload_preserves_absent_empty_and_arbitrary_bytes() {
+        for payload in [None, Some(Vec::new()), Some(vec![0, 1, 2, 0xff, 0, 7])] {
+            let model = Model {
+                mdlvis_data: payload.clone(),
+                ..Model::default()
+            };
+            assert_eq!(round_trip(&model).mdlvis_data, payload);
+        }
+    }
+
+    #[test]
+    fn identified_mdvi_cannot_be_written_from_unknown_chunk_pocket() {
+        let mut model = Model::default();
+        model
+            .unknown_chunks
+            .push(UnknownChunk::new(*b"MDVI", vec![1, 2, 3]));
+        let err = serialize(&model).expect_err("MDVI belongs to mdlvis_data");
+        assert_eq!(err.key, "mdx-mdvi-in-unknown-chunks");
+    }
+
+    #[test]
+    fn mdvi_and_unknown_chunks_keep_separate_payloads() {
+        let model = Model {
+            mdlvis_data: Some(vec![1, 2, 3]),
+            unknown_chunks: vec![UnknownChunk::new(*b"ZZZZ", vec![4, 5, 6])],
+            ..Model::default()
+        };
+        let reloaded = round_trip(&model);
+        assert_eq!(reloaded.mdlvis_data, model.mdlvis_data);
+        assert_eq!(reloaded.unknown_chunks, model.unknown_chunks);
     }
 }
