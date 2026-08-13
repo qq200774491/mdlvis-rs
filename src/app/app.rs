@@ -185,7 +185,7 @@ impl App {
                             texture_info.progress = 0.0;
                         } else {
                             println!(
-                                "Ignoring error for texture {} - already loaded successfully",
+                                "忽略纹理 {} 的错误：该纹理已经成功加载",
                                 texture_id
                             );
                         }
@@ -265,7 +265,7 @@ impl App {
         // Handle Open Model button
         if open_model {
             if let Some(path) = rfd::FileDialog::new()
-                .add_filter("MDX Model", &["mdx"])
+                .add_filter("MDX 模型", &["mdx"])
                 .pick_file()
             {
                 if let Some(path_str) = path.to_str() {
@@ -338,7 +338,7 @@ impl App {
     }
 
     pub async fn load_model(&mut self, path: &str) -> Result<(), MdlError> {
-        println!("Loading model: {}", path);
+        println!("正在加载模型：{}", path);
 
         let handler = get_global_handler_mut().unwrap();
 
@@ -358,7 +358,7 @@ impl App {
         for (texture_id, texture) in model.textures.iter().enumerate() {
             if texture.replaceable_id == 1 {
                 // Team color (RID 1) - create solid color texture
-                println!("Creating team color texture for texture {}", texture_id);
+                println!("正在为纹理 {} 创建队伍颜色纹理", texture_id);
                 handler
                     .renderer
                     .as_mut()
@@ -372,7 +372,7 @@ impl App {
                 }
             } else if texture.replaceable_id == 2 {
                 // Team glow (RID 2) - create 32x32 glow texture with alpha map
-                println!("Creating team glow texture for texture {}", texture_id);
+                println!("正在为纹理 {} 创建队伍辉光纹理", texture_id);
                 handler
                     .renderer
                     .as_mut()
@@ -410,7 +410,7 @@ impl App {
         // Apply found paths and auto-load local textures
         for (id, path) in local_paths {
             if let Some(local_path) = path {
-                println!("Found local texture: {}", local_path.display());
+                println!("找到本地纹理：{}", local_path.display());
                 if let Some(texture_info) = handler.texture_manager.get_texture_mut(id) {
                     texture_info.local_path = Some(local_path);
                     // Auto-load only if not already loaded
@@ -447,7 +447,7 @@ impl App {
             if let Some(texture_info) = handler.texture_manager.get_texture(texture_id) {
                 if texture_info.local_path.is_some() {
                     println!(
-                        "Skipping background load for texture {} - found locally",
+                        "跳过纹理 {} 的后台加载：已找到本地文件",
                         texture_id
                     );
                     continue;
@@ -486,16 +486,16 @@ impl App {
         handler.model = Some(model.clone());
 
         // Initialize animation system with bones
-        println!("Initializing animation system...");
+        println!("正在初始化动画系统……");
         handler.animation_system.init_from_model(&model);
-        println!("Animation system initialized");
+        println!("动画系统初始化完成");
 
         // Reset animation state for new model
-        println!("Resetting UI animation state...");
+        println!("正在重置界面动画状态……");
         handler.ui.reset_animation(&handler.model);
-        println!("UI animation state reset");
+        println!("界面动画状态已重置");
 
-        println!("Model loaded successfully");
+        println!("模型加载成功");
 
         Ok(())
     }

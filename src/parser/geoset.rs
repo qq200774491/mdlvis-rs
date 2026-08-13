@@ -99,7 +99,7 @@ pub fn geoset_parse(file: &mut File, model: &mut Model, geos_size: u32) -> Resul
                     let expected: usize = geoset.matrix_groups.iter().map(|g| g.capacity()).sum();
                     if expected != total_count {
                         eprintln!(
-                            "[mdlvis-rs] MATS count mismatch: total_count={}, sum(capacity)={}",
+                            "[mdlvis-rs] MATS 数量不匹配：总数={}，容量之和={}",
                             total_count, expected
                         );
                     }
@@ -186,7 +186,7 @@ pub fn geoset_parse(file: &mut File, model: &mut Model, geos_size: u32) -> Resul
 
         if !geoset.vertices.is_empty() {
             println!(
-                "  Geoset {}: {} vertices, {} faces, {} vertex groups, {} matrix groups",
+                "  几何体 {}：{} 个顶点、{} 个面、{} 个顶点组、{} 个矩阵组",
                 model.geosets.len(),
                 geoset.vertices.len(),
                 geoset.faces.len(),

@@ -16,6 +16,51 @@ use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
+fn configure_chinese_font(ctx: &egui::Context) {
+    let candidates = if cfg!(target_os = "windows") {
+        vec![
+            r"C:\Windows\Fonts\NotoSansSC-VF.ttf",
+            r"C:\Windows\Fonts\msyh.ttc",
+            r"C:\Windows\Fonts\Deng.ttf",
+            r"C:\Windows\Fonts\simhei.ttf",
+        ]
+    } else if cfg!(target_os = "macos") {
+        vec![
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+        ]
+    } else {
+        vec![
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        ]
+    };
+
+    for path in candidates {
+        let Ok(font_bytes) = std::fs::read(path) else {
+            continue;
+        };
+
+        let font_name = "system_chinese".to_owned();
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            font_name.clone(),
+            std::sync::Arc::new(egui::FontData::from_owned(font_bytes)),
+        );
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+            fonts
+                .families
+                .entry(family)
+                .or_default()
+                .insert(0, font_name.clone());
+        }
+        ctx.set_fonts(fonts);
+        return;
+    }
+
+    eprintln!("未找到可用的中文字体，界面中的中文可能无法正常显示。");
+}
+
 pub struct AppHandler {
     pub app: Option<App>,
     pub model_path: Option<String>,
@@ -44,7 +89,7 @@ impl ApplicationHandler for AppHandler {
                 event_loop
                     .create_window(
                         Window::default_attributes()
-                            .with_title("MDLVis-RS - Warcraft 3 Model Viewer")
+                            .with_title("MDLVis-RS - 魔兽争霸 3 模型查看器")
                             .with_inner_size(winit::dpi::LogicalSize::new(1200.0, 800.0)),
                     )
                     .unwrap(),
@@ -54,6 +99,7 @@ impl ApplicationHandler for AppHandler {
             egui_ctx.options_mut(|options| {
                 options.max_passes = std::num::NonZero::new(2).unwrap();
             });
+            configure_chinese_font(&egui_ctx);
 
             self.egui_state = Some(State::new(
                 egui_ctx,
@@ -105,12 +151,12 @@ impl ApplicationHandler for AppHandler {
             // Check if there's a pending model to load
             if let Some(path) = self.pending_model_path.take() {
                 if let Err(e) = self.runtime.block_on(app.load_model(&path)) {
-                    eprintln!("Failed to load model '{}': {}", path, e);
+                    eprintln!("加载模型“{}”失败：{}", path, e);
                 }
             }
 
             if let Err(e) = app.render() {
-                eprintln!("Render error: {:?}", e);
+                eprintln!("渲染错误：{:?}", e);
             }
             if let Some(window) = &self.window {
                 window.request_redraw();

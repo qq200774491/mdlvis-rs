@@ -31,12 +31,12 @@ fn main() -> Result<(), MdlError> {
         } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
             s.clone()
         } else {
-            "Unknown panic".to_string()
+            "未知的程序异常".to_string()
         };
 
         let location = if let Some(location) = panic_info.location() {
             format!(
-                "\n\nLocation: {}:{}:{}",
+                "\n\n位置：{}:{}:{}",
                 location.file(),
                 location.line(),
                 location.column()
@@ -45,7 +45,7 @@ fn main() -> Result<(), MdlError> {
             String::new()
         };
 
-        let full_message = format!("MDLVis-RS crashed!\n\n{}{}", message, location);
+        let full_message = format!("MDLVis-RS 已崩溃！\n\n{}{}", message, location);
 
         eprintln!("{}", full_message);
 
@@ -54,7 +54,7 @@ fn main() -> Result<(), MdlError> {
         {
             use rfd::MessageDialog;
             MessageDialog::new()
-                .set_title("MDLVis-RS Error")
+                .set_title("MDLVis-RS 错误")
                 .set_description(&full_message)
                 .set_level(rfd::MessageLevel::Error)
                 .show();
@@ -63,7 +63,7 @@ fn main() -> Result<(), MdlError> {
         #[cfg(target_os = "linux")]
         {
             eprintln!("\n{}\n", "=".repeat(80));
-            eprintln!("Please report this error to the developers.");
+            eprintln!("请将此错误报告给开发者。");
             eprintln!("{}\n", "=".repeat(80));
         }
     }));

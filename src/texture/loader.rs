@@ -35,18 +35,18 @@ pub async fn download_texture(path: &str) -> Result<Vec<u8>, MdlError> {
     // Use async HTTP client
     let response = reqwest::get(&url).await.map_err(|e| {
         MdlError::new("network-error")
-            .with_arg("msg", format!("Failed to download from {}: {}", url, e))
+            .with_arg("msg", format!("从 {} 下载失败：{}", url, e))
     })?;
 
     if !response.status().is_success() {
         return Err(MdlError::new("network-error")
-            .with_arg("msg", format!("HTTP {} from {}", response.status(), url)));
+            .with_arg("msg", format!("{} 返回 HTTP {}", url, response.status())));
     }
 
     let bytes = response.bytes().await.map_err(|e| {
         MdlError::new("network-error").with_arg(
             "msg",
-            format!("Failed to read response from {}: {}", url, e),
+            format!("读取 {} 的响应失败：{}", url, e),
         )
     })?;
     Ok(bytes.to_vec())

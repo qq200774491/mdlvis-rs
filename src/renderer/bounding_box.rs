@@ -98,7 +98,7 @@ impl Renderer {
             ];
 
             println!(
-                "Model bounding box: min={:?}, max={:?}, size={:?}",
+                "模型包围盒：最小值={:?}，最大值={:?}，尺寸={:?}",
                 overall_min, overall_max, box_size
             );
         }
@@ -113,13 +113,13 @@ impl Renderer {
                     });
             self.num_bounding_box_lines = (bbox_vertices.len() / 2) as u32;
             println!(
-                "Generated {} bounding box lines for overall model ({} geosets)",
+                "已为整个模型生成 {} 条包围盒线（{} 个几何体）",
                 self.num_bounding_box_lines,
                 model.geosets.len()
             );
         } else {
             self.num_bounding_box_lines = 0;
-            println!("No valid bounding boxes found in geosets");
+            println!("几何体中没有有效的包围盒");
         }
     }
 }

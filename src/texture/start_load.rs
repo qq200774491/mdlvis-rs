@@ -10,7 +10,7 @@ impl App {
             // Skip RID textures - they are generated, not loaded
             if texture_info.replaceable_id > 0 {
                 println!(
-                    "Skipping texture {} - RID {} textures are generated, not loaded",
+                    "跳过纹理 {}：RID {} 纹理由程序生成，无需加载",
                     texture_id, texture_info.replaceable_id
                 );
                 return;
@@ -32,14 +32,14 @@ impl App {
 
             // Spawn background task using runtime handle
             tokio::spawn(async move {
-                println!("🔥Loading texture {}: {}", texture_id, filename);
+                println!("🔥正在加载纹理 {}：{}", texture_id, filename);
 
                 let result = if let Some(path) = local_path {
                     // Try local first
                     match load_from_file(&path).await {
                         Ok(data) => decode_blp(&data),
                         Err(local_err) => {
-                            println!("Local load failed ({}), trying remote", local_err);
+                            println!("本地加载失败（{}），正在尝试远程下载", local_err);
                             load_texture(&filename).await
                         }
                     }

@@ -108,18 +108,18 @@ impl Ui {
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 // Open Model button
-                if ui.button("📁 Open Model").clicked() {
+                if ui.button("📁 打开模型").clicked() {
                     open_model = true;
                 }
 
                 ui.separator();
-                ui.label("📋 Windows:");
+                ui.label("📋 窗口：");
 
                 if ui
                     .button(if settings.ui.show_texture_panel {
-                        "✅ Textures"
+                        "✅ 纹理"
                     } else {
-                        "⬜ Textures"
+                        "⬜ 纹理"
                     })
                     .clicked()
                 {
@@ -129,9 +129,9 @@ impl Ui {
 
                 if ui
                     .button(if settings.ui.show_display_settings {
-                        "✅ Display"
+                        "✅ 显示设置"
                     } else {
-                        "⬜ Display"
+                        "⬜ 显示设置"
                     })
                     .clicked()
                 {
@@ -141,9 +141,9 @@ impl Ui {
 
                 if ui
                     .button(if settings.ui.show_colors {
-                        "✅ Colors"
+                        "✅ 颜色"
                     } else {
-                        "⬜ Colors"
+                        "⬜ 颜色"
                     })
                     .clicked()
                 {
@@ -153,9 +153,9 @@ impl Ui {
 
                 if ui
                     .button(if settings.ui.show_model_info {
-                        "✅ Model Info"
+                        "✅ 模型信息"
                     } else {
-                        "⬜ Model Info"
+                        "⬜ 模型信息"
                     })
                     .clicked()
                 {
@@ -165,9 +165,9 @@ impl Ui {
 
                 if ui
                     .button(if settings.ui.show_geosets {
-                        "✅ Geosets"
+                        "✅ 几何体"
                     } else {
-                        "⬜ Geosets"
+                        "⬜ 几何体"
                     })
                     .clicked()
                 {
@@ -177,9 +177,9 @@ impl Ui {
 
                 if ui
                     .button(if settings.ui.show_materials {
-                        "✅ Materials"
+                        "✅ 材质"
                     } else {
-                        "⬜ Materials"
+                        "⬜ 材质"
                     })
                     .clicked()
                 {
@@ -189,9 +189,9 @@ impl Ui {
 
                 if ui
                     .button(if settings.ui.show_animation {
-                        "✅ Animation"
+                        "✅ 动画"
                     } else {
-                        "⬜ Animation"
+                        "⬜ 动画"
                     })
                     .clicked()
                 {
@@ -338,7 +338,7 @@ impl Ui {
     ) -> bool {
         let mut reset_camera = false;
 
-        egui::Window::new("🎨 Display Settings")
+        egui::Window::new("🎨 显示设置")
             .default_width(300.0)
             .resizable(true)
             .open(&mut settings.ui.show_display_settings)
@@ -346,24 +346,24 @@ impl Ui {
                 let mut changed = false;
 
                 changed |= ui
-                    .checkbox(&mut settings.display.show_skeleton, "Show Skeleton")
+                    .checkbox(&mut settings.display.show_skeleton, "显示骨骼")
                     .changed();
                 changed |= ui
-                    .checkbox(&mut settings.display.wireframe_mode, "Wireframe Mode")
+                    .checkbox(&mut settings.display.wireframe_mode, "线框模式")
                     .changed();
                 changed |= ui
-                    .checkbox(&mut settings.display.show_grid, "Show Grid")
+                    .checkbox(&mut settings.display.show_grid, "显示网格")
                     .changed();
                 changed |= ui
-                    .checkbox(&mut settings.display.show_bounding_box, "Show Bounding Box")
+                    .checkbox(&mut settings.display.show_bounding_box, "显示包围盒")
                     .changed();
 
                 ui.separator();
-                ui.label("Far Plane (View Distance):");
+                ui.label("远裁剪面（视距）：");
                 changed |= ui
                     .add(
                         egui::Slider::new(&mut settings.display.far_plane, 100.0..=5000.0)
-                            .suffix(" units")
+                            .suffix(" 单位")
                             .logarithmic(true),
                     )
                     .changed();
@@ -374,7 +374,7 @@ impl Ui {
 
                 ui.separator();
 
-                if ui.button("Reset Camera").clicked() {
+                if ui.button("重置相机").clicked() {
                     reset_camera = true;
                 }
             });
@@ -389,41 +389,41 @@ impl Ui {
     fn show_colors_window(&mut self, ctx: &egui::Context, settings: &mut Settings) -> bool {
         let mut colors_changed = false;
 
-        egui::Window::new("🌈 Colors")
+        egui::Window::new("🌈 颜色")
             .default_width(300.0)
             .resizable(true)
             .open(&mut settings.ui.show_colors)
             .show(ctx, |ui| {
                 let mut changed = false;
 
-                ui.label("Team Color:");
+                ui.label("队伍颜色：");
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.team_color)
                     .changed();
 
-                ui.label("Skybox Color:");
+                ui.label("天空盒颜色：");
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.skybox_color)
                     .changed();
 
-                ui.label("Grid Major Lines:");
+                ui.label("网格主线颜色：");
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.grid_major_color)
                     .changed();
 
-                ui.label("Grid Minor Lines:");
+                ui.label("网格辅线颜色：");
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.grid_minor_color)
                     .changed();
 
-                ui.label("Bounding Box Color:");
+                ui.label("包围盒颜色：");
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.bounding_box_color)
                     .changed();
 
                 ui.separator();
 
-                if ui.button("Reset to Defaults").clicked() {
+                if ui.button("恢复默认颜色").clicked() {
                     settings.colors = crate::settings::ColorSettings::default();
                     changed = true;
                 }
@@ -447,31 +447,31 @@ impl Ui {
         model: &Option<Model>,
         ui_settings: &mut crate::settings::UiSettings,
     ) {
-        egui::Window::new("ℹ️ Model Info")
+        egui::Window::new("ℹ️ 模型信息")
             .default_width(300.0)
             .resizable(true)
             .open(&mut ui_settings.show_model_info)
             .show(ctx, |ui| {
                 if let Some(model) = model {
-                    ui.label(format!("Name: {}", model.name));
+                    ui.label(format!("名称：{}", model.name));
                     ui.separator();
 
-                    ui.label(format!("Geosets: {}", model.geosets.len()));
+                    ui.label(format!("几何体：{}", model.geosets.len()));
                     let total_verts: usize = model.geosets.iter().map(|g| g.vertices.len()).sum();
                     let total_faces: usize = model.geosets.iter().map(|g| g.faces.len()).sum();
                     let total_uvs: usize = model.geosets.iter().map(|g| g.tex_coords.len()).sum();
-                    ui.label(format!("  Total vertices: {}", total_verts));
-                    ui.label(format!("  Total faces: {}", total_faces));
-                    ui.label(format!("  Total UVs: {}", total_uvs));
+                    ui.label(format!("  顶点总数：{}", total_verts));
+                    ui.label(format!("  面总数：{}", total_faces));
+                    ui.label(format!("  UV 总数：{}", total_uvs));
 
                     ui.separator();
-                    ui.label(format!("Materials: {}", model.materials.len()));
-                    ui.label(format!("Textures: {}", model.textures.len()));
-                    ui.label(format!("Sequences: {}", model.sequences.len()));
-                    ui.label(format!("Bones: {}", model.bones.len()));
-                    ui.label(format!("Helpers: {}", model.helpers.len()));
+                    ui.label(format!("材质：{}", model.materials.len()));
+                    ui.label(format!("纹理：{}", model.textures.len()));
+                    ui.label(format!("动画序列：{}", model.sequences.len()));
+                    ui.label(format!("骨骼：{}", model.bones.len()));
+                    ui.label(format!("辅助节点：{}", model.helpers.len()));
                 } else {
-                    ui.label("No model loaded");
+                    ui.label("尚未加载模型");
                 }
             });
 
@@ -486,7 +486,7 @@ impl Ui {
         model: &Option<Model>,
         ui_settings: &mut crate::settings::UiSettings,
     ) {
-        egui::Window::new("📦 Geosets")
+        egui::Window::new("📦 几何体")
             .default_width(300.0)
             .resizable(true)
             .open(&mut ui_settings.show_geosets)
@@ -501,7 +501,7 @@ impl Ui {
                             ui.horizontal(|ui| {
                                 ui.checkbox(&mut self.show_geosets[i], format!("#{}", i));
                                 ui.label(format!(
-                                    "{} verts, {} faces",
+                                    "{} 个顶点，{} 个面",
                                     geoset.vertices.len(),
                                     geoset.faces.len()
                                 ));
@@ -509,7 +509,7 @@ impl Ui {
                         }
                     });
                 } else {
-                    ui.label("No model loaded");
+                    ui.label("尚未加载模型");
                 }
             });
 
@@ -525,7 +525,7 @@ impl Ui {
         ui_settings: &mut crate::settings::UiSettings,
         renderer: &mut crate::renderer::renderer::Renderer,
     ) {
-        egui::Window::new("🎨 Materials")
+        egui::Window::new("🎨 材质")
             .default_width(400.0)
             .resizable(true)
             .open(&mut ui_settings.show_materials)
@@ -539,7 +539,7 @@ impl Ui {
                             // Use CollapsingHeader for each material
                             let header_id = egui::Id::new(("material_header", mat_id));
                             egui::CollapsingHeader::new(format!(
-                                "🎨 Material #{} ({} layers)",
+                                "🎨 材质 #{}（{} 个图层）",
                                 mat_id,
                                 material.layers.len()
                             ))
@@ -550,7 +550,7 @@ impl Ui {
                                     // JSON copy button
                                     if ui
                                         .button("📋 JSON")
-                                        .on_hover_text("Copy material info as JSON to clipboard")
+                                        .on_hover_text("将材质信息以 JSON 格式复制到剪贴板")
                                         .clicked()
                                     {
                                         // Build JSON representation
@@ -597,7 +597,7 @@ impl Ui {
                                                 let flags_json: Vec<String> = layer
                                                     .shading_flags
                                                     .iter()
-                                                    .map(|f| format!("\"{}\"", f.name()))
+                                                    .map(|f| format!("\"{:?}\"", f))
                                                     .collect();
                                                 json.push_str(&format!(
                                                     "      \"shading_flags\": [{}],\n",
@@ -626,7 +626,7 @@ impl Ui {
                                     }
                                 });
 
-                                ui.label(format!("Layers: {}", material.layers.len()));
+                                ui.label(format!("图层数：{}", material.layers.len()));
 
                                 // No need to initialize - data is in the model now
 
@@ -637,7 +637,7 @@ impl Ui {
                                     ui.horizontal(|ui| {
                                         ui.checkbox(&mut layer.enabled, "");
                                         ui.label(
-                                            egui::RichText::new(format!("Layer #{}", layer_id))
+                                            egui::RichText::new(format!("图层 #{}", layer_id))
                                                 .strong(),
                                         );
                                     });
@@ -658,24 +658,24 @@ impl Ui {
                                             {
                                                 if texture_info.replaceable_id == 1 {
                                                     format!(
-                                                        "    📎 Texture #{} [RID: 1 Team Color]",
+                                                        "    📎 纹理 #{} [RID：1 队伍颜色]",
                                                         tex_id
                                                     )
                                                 } else if texture_info.replaceable_id == 2 {
                                                     format!(
-                                                        "    📎 Texture #{} [RID: 2 Team Glow]",
+                                                        "    📎 纹理 #{} [RID：2 队伍辉光]",
                                                         tex_id
                                                     )
                                                 } else if texture_info.replaceable_id > 0 {
                                                     format!(
-                                                        "    📎 Texture #{} [RID: {}]",
+                                                        "    📎 纹理 #{} [RID：{}]",
                                                         tex_id, texture_info.replaceable_id
                                                     )
                                                 } else {
-                                                    format!("    📎 Texture #{}", tex_id)
+                                                    format!("    📎 纹理 #{}", tex_id)
                                                 }
                                             } else {
-                                                format!("    📎 Texture #{}", tex_id)
+                                                format!("    📎 纹理 #{}", tex_id)
                                             };
 
                                             egui::CollapsingHeader::new(header_text)
@@ -699,18 +699,18 @@ impl Ui {
                                                         if texture_info.replaceable_id == 1 {
                                                             ui.colored_label(
                                                                 egui::Color32::GOLD,
-                                                                "[RID: 1 Team Color]",
+                                                                "[RID：1 队伍颜色]",
                                                             );
                                                         } else if texture_info.replaceable_id == 2 {
                                                             ui.colored_label(
                                                                 egui::Color32::GOLD,
-                                                                "[RID: 2 Team Glow]",
+                                                                "[RID：2 队伍辉光]",
                                                             );
                                                         } else if texture_info.replaceable_id > 0 {
                                                             ui.colored_label(
                                                                 egui::Color32::GOLD,
                                                                 format!(
-                                                                    "[RID: {}]",
+                                                                    "[RID：{}]",
                                                                     texture_info.replaceable_id
                                                                 ),
                                                             );
@@ -730,7 +730,7 @@ impl Ui {
                                                     }
                                                 });
                                         } else {
-                                            ui.label("    Texture ID: None");
+                                            ui.label("    纹理 ID：无");
                                         }
 
                                         // Filter Mode with collapsible checkboxes in column
@@ -744,7 +744,7 @@ impl Ui {
                                         let filter_header_id =
                                             egui::Id::new(("filter_mode", mat_id, layer_id));
                                         egui::CollapsingHeader::new(format!(
-                                            "    FilterMode: {}",
+                                            "    过滤模式：{}",
                                             filter_name
                                         ))
                                         .id_salt(filter_header_id)
@@ -756,7 +756,7 @@ impl Ui {
                                                 // Reset button
                                                 if ui
                                                     .small_button("↺")
-                                                    .on_hover_text("Reset to original")
+                                                    .on_hover_text("恢复原始值")
                                                     .clicked()
                                                 {
                                                     layer.filter_mode_override = None;
@@ -764,7 +764,7 @@ impl Ui {
 
                                                 if layer.filter_mode_override.is_some() {
                                                     ui.label(
-                                                        egui::RichText::new("(modified)")
+                                                        egui::RichText::new("（已修改）")
                                                             .small()
                                                             .weak(),
                                                     );
@@ -785,7 +785,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::None
                                                             ),
-                                                            "None",
+                                                            "无",
                                                         )
                                                         .clicked()
                                                     {
@@ -798,7 +798,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Transparent
                                                             ),
-                                                            "Transparent",
+                                                            "透明",
                                                         )
                                                         .clicked()
                                                     {
@@ -811,7 +811,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Blend
                                                             ),
-                                                            "Blend",
+                                                            "混合",
                                                         )
                                                         .clicked()
                                                     {
@@ -824,7 +824,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Additive
                                                             ),
-                                                            "Additive",
+                                                            "加法",
                                                         )
                                                         .clicked()
                                                     {
@@ -837,7 +837,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::AddAlpha
                                                             ),
-                                                            "AddAlpha",
+                                                            "加法透明",
                                                         )
                                                         .clicked()
                                                     {
@@ -850,7 +850,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Modulate
                                                             ),
-                                                            "Modulate",
+                                                            "调制",
                                                         )
                                                         .clicked()
                                                     {
@@ -863,7 +863,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Modulate2x
                                                             ),
-                                                            "Modulate2x",
+                                                            "双倍调制",
                                                         )
                                                         .clicked()
                                                     {
@@ -930,7 +930,7 @@ impl Ui {
                                         let shading_header_id =
                                             egui::Id::new(("shading", mat_id, layer_id));
                                         egui::CollapsingHeader::new(format!(
-                                            "    Shading {}",
+                                            "    着色标志 {}",
                                             shading_mask
                                         ))
                                         .id_salt(shading_header_id)
@@ -942,7 +942,7 @@ impl Ui {
                                                 // Reset button
                                                 if ui
                                                     .small_button("↺")
-                                                    .on_hover_text("Reset to original")
+                                                    .on_hover_text("恢复原始值")
                                                     .clicked()
                                                 {
                                                     layer.shading_flags_override = None;
@@ -950,7 +950,7 @@ impl Ui {
 
                                                 if layer.shading_flags_override.is_some() {
                                                     ui.label(
-                                                        egui::RichText::new("(modified)")
+                                                        egui::RichText::new("（已修改）")
                                                             .small()
                                                             .weak(),
                                                     );
@@ -1009,7 +1009,7 @@ impl Ui {
 
                                         // Alpha slider with reset button
                                         ui.horizontal(|ui| {
-                                            ui.label("    Alpha:");
+                                            ui.label("    不透明度：");
 
                                             // Get current alpha (either override or original)
                                             let mut current_alpha =
@@ -1032,7 +1032,7 @@ impl Ui {
                                             // Reset button
                                             if ui
                                                 .small_button("↺")
-                                                .on_hover_text("Reset to original")
+                                                .on_hover_text("恢复原始值")
                                                 .clicked()
                                             {
                                                 layer.alpha_override = None;
@@ -1042,7 +1042,7 @@ impl Ui {
                                             if layer.alpha_override.is_some() {
                                                 ui.label(
                                                     egui::RichText::new(format!(
-                                                        "(orig: {:.2})",
+                                                        "（原始值：{:.2}）",
                                                         layer.alpha
                                                     ))
                                                     .small()
@@ -1056,7 +1056,7 @@ impl Ui {
                         }
                     });
                 } else {
-                    ui.label("No model loaded");
+                    ui.label("尚未加载模型");
                 }
             });
 
@@ -1071,7 +1071,7 @@ impl Ui {
         model: &Option<Model>,
         ui_settings: &mut crate::settings::UiSettings,
     ) {
-        egui::Window::new("🎬 Animation")
+        egui::Window::new("🎬 动画")
             .default_width(350.0)
             .default_height(500.0)
             .resizable(true)
@@ -1080,12 +1080,12 @@ impl Ui {
                 if let Some(model) = model {
                     if !model.sequences.is_empty() {
                         ui.horizontal(|ui| {
-                            ui.label("Sequences:");
+                            ui.label("序列：");
                             ui.separator();
 
                             // Control buttons
                             ui.add_enabled_ui(!self.is_playing, |ui| {
-                                if ui.button("▶ Play").clicked() {
+                                if ui.button("▶ 播放").clicked() {
                                     self.is_playing = true;
                                     self.use_animation = true; // Enable animated transforms
 
@@ -1105,7 +1105,7 @@ impl Ui {
                             });
 
                             ui.add_enabled_ui(self.is_playing, |ui| {
-                                if ui.button("⏸ Pause").clicked() {
+                                if ui.button("⏸ 暂停").clicked() {
                                     self.is_playing = false;
                                     self.last_update_time = 0.0;
                                 }
@@ -1116,7 +1116,7 @@ impl Ui {
                             let can_stop =
                                 self.is_playing || self.current_frame > seq.start_frame as f32;
                             ui.add_enabled_ui(can_stop, |ui| {
-                                if ui.button("⏹ Stop").clicked() {
+                                if ui.button("⏹ 停止").clicked() {
                                     self.is_playing = false;
                                     self.last_update_time = 0.0;
                                     self.current_frame = seq.start_frame as f32;
@@ -1126,7 +1126,7 @@ impl Ui {
                             ui.separator();
 
                             // Reset button - disables animation, returns to original parsed data
-                            if ui.button("🔄 Reset").clicked() {
+                            if ui.button("🔄 重置").clicked() {
                                 self.is_playing = false;
                                 self.use_animation = false; // Disable animated transforms
                                 self.last_update_time = 0.0;
@@ -1135,9 +1135,9 @@ impl Ui {
                             }
 
                             let loop_button = if self.is_looping {
-                                "🔁 Loop"
+                                "🔁 循环"
                             } else {
-                                "➡ Once"
+                                "➡ 单次"
                             };
                             if ui.button(loop_button).clicked() {
                                 self.is_looping = !self.is_looping;
@@ -1147,7 +1147,7 @@ impl Ui {
                         ui.separator();
 
                         // Sequences list - full width, flexible height
-                        ui.label("Animations:");
+                        ui.label("动画列表：");
                         let available_height = ui.available_height() - 200.0; // Reserve space for details below
                         egui::ScrollArea::vertical()
                             .max_height(available_height.max(150.0))
@@ -1171,35 +1171,35 @@ impl Ui {
 
                         // Show sequence details (without border)
                         let seq = &model.sequences[self.selected_sequence];
-                        ui.label(format!("Animation: {}", seq.name));
-                        ui.label(format!("Frames: {} - {}", seq.start_frame, seq.end_frame));
+                        ui.label(format!("动画：{}", seq.name));
+                        ui.label(format!("帧范围：{} - {}", seq.start_frame, seq.end_frame));
                         ui.label(format!(
-                            "Duration: {} frames ({:.1}s at 30fps)",
+                            "时长：{} 帧（30 FPS 时为 {:.1} 秒）",
                             seq.end_frame - seq.start_frame,
                             (seq.end_frame - seq.start_frame) as f32 / 30.0
                         ));
 
                         // Show current state
                         let state_text = if self.is_playing {
-                            format!("▶ Playing - Frame {:.0}", self.current_frame)
+                            format!("▶ 正在播放 - 第 {:.0} 帧", self.current_frame)
                         } else {
-                            format!("⏸ Paused - Frame {:.0}", self.current_frame)
+                            format!("⏸ 已暂停 - 第 {:.0} 帧", self.current_frame)
                         };
                         ui.label(egui::RichText::new(state_text).strong());
 
                         if seq.non_looping {
-                            ui.label("⚠ Non-looping");
+                            ui.label("⚠ 不循环");
                         }
 
                         if let Some(rarity) = seq.rarity {
-                            ui.label(format!("Rarity: {}", rarity));
+                            ui.label(format!("稀有度：{}", rarity));
                         }
 
                         ui.separator();
 
                         // Frame slider
                         ui.horizontal(|ui| {
-                            ui.label("Frame:");
+                            ui.label("帧：");
                             let frame_range = seq.start_frame as f32..=seq.end_frame as f32;
                             let slider_response = ui.add(
                                 egui::Slider::new(&mut self.current_frame, frame_range).integer(),
@@ -1215,10 +1215,10 @@ impl Ui {
                             ui.label(format!("{:.0}", self.current_frame));
                         });
                     } else {
-                        ui.label("No animations in model");
+                        ui.label("模型中没有动画");
                     }
                 } else {
-                    ui.label("No model loaded");
+                    ui.label("尚未加载模型");
                 }
             });
 
