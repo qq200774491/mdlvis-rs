@@ -56,14 +56,13 @@ impl ShadingFlags {
     }
 
     pub fn label(&self) -> String {
-        match self {
-            Self::Unshaded => t!("shading.unshaded"),
-            Self::SphereEnvMap => t!("shading.sphere_env"),
-            Self::TwoSided => t!("shading.two_sided"),
-            Self::Unfogged => t!("shading.unfogged"),
-            Self::NoDepthTest => t!("shading.no_depth_test"),
-            Self::NoDepthSet => t!("shading.no_depth_set"),
-        }
-        .to_string()
+        crate::i18n::t(match self {
+            Self::Unshaded => "shading.unshaded",
+            Self::SphereEnvMap => "shading.sphere-env-map",
+            Self::TwoSided => "shading.two-sided",
+            Self::Unfogged => "shading.unfogged",
+            Self::NoDepthTest => "shading.no-depth-test",
+            Self::NoDepthSet => "shading.no-depth-set",
+        })
     }
 }

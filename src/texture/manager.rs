@@ -53,16 +53,20 @@ impl TextureInfo {
 
     pub fn status_text(&self) -> String {
         match &self.status {
-            TextureStatus::NotLoaded => t!("texture.status.not_loaded").to_string(),
-            TextureStatus::LoadingLocal => t!("texture.status.loading_local").to_string(),
-            TextureStatus::LoadingRemote => t!("texture.status.loading_remote").to_string(),
-            TextureStatus::Loaded => t!(
+            TextureStatus::NotLoaded => crate::i18n::t("texture.status.not-loaded"),
+            TextureStatus::LoadingLocal => crate::i18n::t("texture.status.loading-local"),
+            TextureStatus::LoadingRemote => crate::i18n::t("texture.status.loading-remote"),
+            TextureStatus::Loaded => crate::i18n::t_args(
                 "texture.status.loaded",
-                width = self.width,
-                height = self.height
-            )
-            .to_string(),
-            TextureStatus::Error(err) => t!("texture.status.local_error", error = err.as_str()).to_string(),
+                [
+                    ("width", self.width.into()),
+                    ("height", self.height.into()),
+                ],
+            ),
+            TextureStatus::Error(err) => crate::i18n::t_args(
+                "texture.status.local-error",
+                [("error", err.as_str().into())],
+            ),
         }
     }
 

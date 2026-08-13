@@ -268,7 +268,7 @@ impl App {
         // Handle Open Model button
         if open_model {
             if let Some(path) = rfd::FileDialog::new()
-                .add_filter(t!("file.mdx_model").as_ref(), &["mdx"])
+                .add_filter(&crate::i18n::t("dialog.open-filter"), &["mdx"])
                 .pick_file()
             {
                 if let Some(path_str) = path.to_str() {
@@ -280,7 +280,7 @@ impl App {
         // Handle reset camera button
         if language_changed {
             if let Some(window) = handler.window.as_ref() {
-                window.set_title(t!("window.title").as_ref());
+                window.set_title(&crate::i18n::t("app.window-title"));
             }
         }
 

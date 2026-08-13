@@ -64,15 +64,14 @@ impl FilterMode {
     }
 
     pub fn label(&self) -> String {
-        match self {
-            Self::None => t!("filter.none"),
-            Self::Transparent => t!("filter.transparent"),
-            Self::Blend => t!("filter.blend"),
-            Self::Additive => t!("filter.additive"),
-            Self::AddAlpha => t!("filter.add_alpha"),
-            Self::Modulate => t!("filter.modulate"),
-            Self::Modulate2x => t!("filter.modulate2x"),
-        }
-        .to_string()
+        crate::i18n::t(match self {
+            Self::None => "filter.none",
+            Self::Transparent => "filter.transparent",
+            Self::Blend => "filter.blend",
+            Self::Additive => "filter.additive",
+            Self::AddAlpha => "filter.add-alpha",
+            Self::Modulate => "filter.modulate",
+            Self::Modulate2x => "filter.modulate-2x",
+        })
     }
 }

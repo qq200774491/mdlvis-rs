@@ -108,12 +108,15 @@ impl Ui {
         // Top menu bar
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button(t!("menu.open_model")).clicked() {
+                if ui
+                    .button(format!("📁 {}", crate::i18n::t("menu.open-model")))
+                    .clicked()
+                {
                     open_model = true;
                 }
 
                 ui.separator();
-                ui.label(t!("menu.windows"));
+                ui.label(format!("📋 {}", crate::i18n::t("menu.windows")));
 
                 if ui
                     .button(toggle_label(settings.ui.show_texture_panel, "menu.textures"))
@@ -143,7 +146,7 @@ impl Ui {
                 }
 
                 if ui
-                    .button(toggle_label(settings.ui.show_model_info, "menu.model_info"))
+                    .button(toggle_label(settings.ui.show_model_info, "menu.model-info"))
                     .clicked()
                 {
                     settings.ui.show_model_info = !settings.ui.show_model_info;
@@ -173,27 +176,14 @@ impl Ui {
                     settings.ui.show_animation = !settings.ui.show_animation;
                     settings.ui.save();
                 }
-
-                ui.separator();
-                ui.label(t!("menu.language"));
-                for lang in Language::ALL {
-                    if ui
-                        .selectable_label(settings.ui.language == lang, lang.native_name())
-                        .clicked()
-                        && settings.ui.language != lang
-                    {
-                        settings.ui.language = lang;
-                        lang.apply();
-                        settings.ui.save();
-                        language_changed = true;
-                    }
-                }
             });
         });
 
         // Show windows based on UI settings
         if settings.ui.show_display_settings {
-            reset_camera = self.show_display_settings_window(ctx, settings);
+            let (reset, lang_changed) = self.show_display_settings_window(ctx, settings);
+            reset_camera = reset;
+            language_changed = lang_changed;
         }
 
         if settings.ui.show_colors {
@@ -326,38 +316,49 @@ impl Ui {
         &mut self,
         ctx: &egui::Context,
         settings: &mut Settings,
-    ) -> bool {
+    ) -> (bool, bool) {
         let mut reset_camera = false;
+        let mut language_changed = false;
+        let mut show_display = settings.ui.show_display_settings;
 
-        egui::Window::new(t!("display.title"))
+        egui::Window::new(crate::i18n::t("window.display"))
             .default_width(300.0)
             .resizable(true)
-            .open(&mut settings.ui.show_display_settings)
+            .open(&mut show_display)
             .show(ctx, |ui| {
                 let mut changed = false;
 
                 changed |= ui
-                    .checkbox(&mut settings.display.show_skeleton, t!("display.show_skeleton"))
+                    .checkbox(
+                        &mut settings.display.show_skeleton,
+                        crate::i18n::t("display.show-skeleton"),
+                    )
                     .changed();
                 changed |= ui
-                    .checkbox(&mut settings.display.wireframe_mode, t!("display.wireframe"))
+                    .checkbox(
+                        &mut settings.display.wireframe_mode,
+                        crate::i18n::t("display.wireframe"),
+                    )
                     .changed();
                 changed |= ui
-                    .checkbox(&mut settings.display.show_grid, t!("display.show_grid"))
+                    .checkbox(
+                        &mut settings.display.show_grid,
+                        crate::i18n::t("display.show-grid"),
+                    )
                     .changed();
                 changed |= ui
                     .checkbox(
                         &mut settings.display.show_bounding_box,
-                        t!("display.show_bounding_box"),
+                        crate::i18n::t("display.show-bounding-box"),
                     )
                     .changed();
 
                 ui.separator();
-                ui.label(t!("display.far_plane"));
+                ui.label(crate::i18n::t("display.far-plane"));
                 changed |= ui
                     .add(
                         egui::Slider::new(&mut settings.display.far_plane, 100.0..=5000.0)
-                            .suffix(t!("display.units"))
+                            .suffix(format!(" {}", crate::i18n::t("display.far-plane-suffix")))
                             .logarithmic(true),
                     )
                     .changed();
@@ -367,57 +368,72 @@ impl Ui {
                 }
 
                 ui.separator();
+                ui.label(crate::i18n::t("display.language"));
+                for lang in Language::ALL {
+                    if ui
+                        .selectable_label(settings.ui.language() == lang, lang.native_name())
+                        .clicked()
+                        && settings.ui.language() != lang
+                    {
+                        settings.ui.set_language(lang);
+                        settings.ui.save();
+                        language_changed = true;
+                    }
+                }
 
-                if ui.button(t!("display.reset_camera")).clicked() {
+                ui.separator();
+
+                if ui.button(crate::i18n::t("display.reset-camera")).clicked() {
                     reset_camera = true;
                 }
             });
 
-        if !settings.ui.show_display_settings {
+        if settings.ui.show_display_settings != show_display {
+            settings.ui.show_display_settings = show_display;
             settings.ui.save();
         }
 
-        reset_camera
+        (reset_camera, language_changed)
     }
 
     fn show_colors_window(&mut self, ctx: &egui::Context, settings: &mut Settings) -> bool {
         let mut colors_changed = false;
 
-        egui::Window::new(t!("colors.title"))
+        egui::Window::new(crate::i18n::t("window.colors"))
             .default_width(300.0)
             .resizable(true)
             .open(&mut settings.ui.show_colors)
             .show(ctx, |ui| {
                 let mut changed = false;
 
-                ui.label(t!("colors.team"));
+                ui.label(crate::i18n::t("color.team"));
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.team_color)
                     .changed();
 
-                ui.label(t!("colors.skybox"));
+                ui.label(crate::i18n::t("color.skybox"));
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.skybox_color)
                     .changed();
 
-                ui.label(t!("colors.grid_major"));
+                ui.label(crate::i18n::t("color.grid-major"));
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.grid_major_color)
                     .changed();
 
-                ui.label(t!("colors.grid_minor"));
+                ui.label(crate::i18n::t("color.grid-minor"));
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.grid_minor_color)
                     .changed();
 
-                ui.label(t!("colors.bounding_box"));
+                ui.label(crate::i18n::t("color.bounding-box"));
                 changed |= ui
                     .color_edit_button_rgb(&mut settings.colors.bounding_box_color)
                     .changed();
 
                 ui.separator();
 
-                if ui.button(t!("colors.reset")).clicked() {
+                if ui.button(crate::i18n::t("color.reset")).clicked() {
                     settings.colors = crate::settings::ColorSettings::default();
                     changed = true;
                 }
@@ -441,31 +457,61 @@ impl Ui {
         model: &Option<Model>,
         ui_settings: &mut crate::settings::UiSettings,
     ) {
-        egui::Window::new(t!("model_info.title"))
+        egui::Window::new(crate::i18n::t("window.model-info"))
             .default_width(300.0)
             .resizable(true)
             .open(&mut ui_settings.show_model_info)
             .show(ctx, |ui| {
                 if let Some(model) = model {
-                    ui.label(t!("model_info.name", name = model.name.as_str()));
+                    ui.label(crate::i18n::t_args(
+                        "info.name",
+                        [("name", model.name.as_str().into())],
+                    ));
                     ui.separator();
 
-                    ui.label(t!("model_info.geosets", count = model.geosets.len()));
+                    ui.label(crate::i18n::t_args(
+                        "info.geosets",
+                        [("count", model.geosets.len().into())],
+                    ));
                     let total_verts: usize = model.geosets.iter().map(|g| g.vertices.len()).sum();
                     let total_faces: usize = model.geosets.iter().map(|g| g.faces.len()).sum();
                     let total_uvs: usize = model.geosets.iter().map(|g| g.tex_coords.len()).sum();
-                    ui.label(t!("model_info.total_vertices", count = total_verts));
-                    ui.label(t!("model_info.total_faces", count = total_faces));
-                    ui.label(t!("model_info.total_uvs", count = total_uvs));
+                    ui.label(crate::i18n::t_args(
+                        "info.vertices",
+                        [("count", total_verts.into())],
+                    ));
+                    ui.label(crate::i18n::t_args(
+                        "info.faces",
+                        [("count", total_faces.into())],
+                    ));
+                    ui.label(crate::i18n::t_args(
+                        "info.uvs",
+                        [("count", total_uvs.into())],
+                    ));
 
                     ui.separator();
-                    ui.label(t!("model_info.materials", count = model.materials.len()));
-                    ui.label(t!("model_info.textures", count = model.textures.len()));
-                    ui.label(t!("model_info.sequences", count = model.sequences.len()));
-                    ui.label(t!("model_info.bones", count = model.bones.len()));
-                    ui.label(t!("model_info.helpers", count = model.helpers.len()));
+                    ui.label(crate::i18n::t_args(
+                        "info.materials",
+                        [("count", model.materials.len().into())],
+                    ));
+                    ui.label(crate::i18n::t_args(
+                        "info.textures",
+                        [("count", model.textures.len().into())],
+                    ));
+                    ui.label(crate::i18n::t_args(
+                        "info.sequences",
+                        [("count", model.sequences.len().into())],
+                    ));
+                    ui.label(crate::i18n::t_args(
+                        "info.bones",
+                        [("count", model.bones.len().into())],
+                    ));
+                    ui.label(crate::i18n::t_args(
+                        "info.helpers",
+                        [("count", model.helpers.len().into())],
+                    ));
                 } else {
-                    ui.label(t!("model_info.none"));
+                    ui.label(crate::i18n::t("info.no-model"));
                 }
             });
 
@@ -480,7 +526,7 @@ impl Ui {
         model: &Option<Model>,
         ui_settings: &mut crate::settings::UiSettings,
     ) {
-        egui::Window::new(t!("geosets.title"))
+        egui::Window::new(crate::i18n::t("window.geosets"))
             .default_width(300.0)
             .resizable(true)
             .open(&mut ui_settings.show_geosets)
@@ -494,16 +540,12 @@ impl Ui {
 
                             ui.horizontal(|ui| {
                                 ui.checkbox(&mut self.show_geosets[i], format!("#{}", i));
-                                ui.label(t!(
-                                    "geosets.verts_faces",
-                                    verts = geoset.vertices.len(),
-                                    faces = geoset.faces.len()
-                                ));
+                                ui.label(crate::i18n::t_args("geoset.stats", [("vertices", geoset.vertices.len().into()), ("faces", geoset.faces.len().into())]));
                             });
                         }
                     });
                 } else {
-                    ui.label(t!("model_info.none"));
+                    ui.label(crate::i18n::t("info.no-model"));
                 }
             });
 
@@ -519,7 +561,7 @@ impl Ui {
         ui_settings: &mut crate::settings::UiSettings,
         renderer: &mut crate::renderer::renderer::Renderer,
     ) {
-        egui::Window::new(t!("materials.title"))
+        egui::Window::new(crate::i18n::t("window.materials"))
             .default_width(400.0)
             .resizable(true)
             .open(&mut ui_settings.show_materials)
@@ -532,11 +574,7 @@ impl Ui {
                         for (mat_id, material) in model.materials.iter_mut().enumerate() {
                             // Use CollapsingHeader for each material
                             let header_id = egui::Id::new(("material_header", mat_id));
-                            egui::CollapsingHeader::new(t!(
-                                "materials.header",
-                                id = mat_id,
-                                layers = material.layers.len()
-                            ))
+                            egui::CollapsingHeader::new(crate::i18n::t_args("material.header", [("id", mat_id.into()), ("layers", material.layers.len().into())]))
                             .id_salt(header_id)
                             .default_open(false)
                             .show(ui, |ui| {
@@ -544,7 +582,7 @@ impl Ui {
                                     // JSON copy button
                                     if ui
                                         .button("📋 JSON")
-                                        .on_hover_text(t!("materials.copy_json"))
+                                        .on_hover_text(crate::i18n::t("material.copy-json-hint"))
                                         .clicked()
                                     {
                                         // Build JSON representation
@@ -555,7 +593,7 @@ impl Ui {
 
                                         for (layer_id, layer) in material.layers.iter().enumerate()
                                         {
-                                            json.push_str(&format!("    {{\n"));
+                                            json.push_str("    {\n");
                                             json.push_str(&format!(
                                                 "      \"layer_id\": {},\n",
                                                 layer_id
@@ -620,7 +658,10 @@ impl Ui {
                                     }
                                 });
 
-                                ui.label(t!("materials.layers", count = material.layers.len()));
+                                ui.label(crate::i18n::t_args(
+                                    "material.layer-count",
+                                    [("count", material.layers.len().into())],
+                                ));
 
                                 // No need to initialize - data is in the model now
 
@@ -631,7 +672,7 @@ impl Ui {
                                     ui.horizontal(|ui| {
                                         ui.checkbox(&mut layer.enabled, "");
                                         ui.label(
-                                            egui::RichText::new(t!("materials.layer", id = layer_id))
+                                            egui::RichText::new(crate::i18n::t_args("material.layer", [("id", layer_id.into())]))
                                                 .strong(),
                                         );
                                     });
@@ -651,29 +692,19 @@ impl Ui {
                                                 textures.get(tex_id)
                                             {
                                                 if texture_info.replaceable_id == 1 {
-                                                    t!(
-                                                        "materials.texture_rid_team_color",
-                                                        id = tex_id
-                                                    )
+                                                    crate::i18n::t_args("material.texture-team-color", [("id", tex_id.into())])
                                                     .to_string()
                                                 } else if texture_info.replaceable_id == 2 {
-                                                    t!(
-                                                        "materials.texture_rid_team_glow",
-                                                        id = tex_id
-                                                    )
+                                                    crate::i18n::t_args("material.texture-team-glow", [("id", tex_id.into())])
                                                     .to_string()
                                                 } else if texture_info.replaceable_id > 0 {
-                                                    t!(
-                                                        "materials.texture_rid",
-                                                        id = tex_id,
-                                                        rid = texture_info.replaceable_id
-                                                    )
+                                                    crate::i18n::t_args("material.texture-rid", [("id", tex_id.into()), ("rid", texture_info.replaceable_id.into())])
                                                     .to_string()
                                                 } else {
-                                                    t!("materials.texture", id = tex_id).to_string()
+                                                    crate::i18n::t_args("material.texture", [("id", tex_id.into())]).to_string()
                                                 }
                                             } else {
-                                                t!("materials.texture", id = tex_id).to_string()
+                                                crate::i18n::t_args("material.texture", [("id", tex_id.into())]).to_string()
                                             };
 
                                             egui::CollapsingHeader::new(header_text)
@@ -697,20 +728,24 @@ impl Ui {
                                                         if texture_info.replaceable_id == 1 {
                                                             ui.colored_label(
                                                                 egui::Color32::GOLD,
-                                                                t!("rid.team_color"),
+                                                                crate::i18n::t("material.rid-team-color"),
                                                             );
                                                         } else if texture_info.replaceable_id == 2 {
                                                             ui.colored_label(
                                                                 egui::Color32::GOLD,
-                                                                t!("rid.team_glow"),
+                                                                crate::i18n::t("material.rid-team-glow"),
                                                             );
                                                         } else if texture_info.replaceable_id > 0 {
                                                             ui.colored_label(
                                                                 egui::Color32::GOLD,
-                                                                t!(
-                                                                    "rid.generic",
-                                                                    id = texture_info
-                                                                        .replaceable_id
+                                                                crate::i18n::t_args(
+                                                                    "material.rid",
+                                                                    [(
+                                                                        "rid",
+                                                                        texture_info
+                                                                            .replaceable_id
+                                                                            .into(),
+                                                                    )],
                                                                 ),
                                                             );
                                                         }
@@ -729,7 +764,7 @@ impl Ui {
                                                     }
                                                 });
                                         } else {
-                                            ui.label(t!("materials.texture_none"));
+                                            ui.label(crate::i18n::t("material.no-texture-id"));
                                         }
 
                                         // Filter Mode with collapsible checkboxes in column
@@ -742,9 +777,9 @@ impl Ui {
 
                                         let filter_header_id =
                                             egui::Id::new(("filter_mode", mat_id, layer_id));
-                                        egui::CollapsingHeader::new(t!(
-                                            "materials.filter_mode",
-                                            name = filter_name.as_str()
+                                        egui::CollapsingHeader::new(crate::i18n::t_args(
+                                            "material.filter-mode",
+                                            [("name", filter_name.as_str().into())],
                                         ))
                                         .id_salt(filter_header_id)
                                         .default_open(false)
@@ -755,7 +790,7 @@ impl Ui {
                                                 // Reset button
                                                 if ui
                                                     .small_button("↺")
-                                                    .on_hover_text(t!("materials.reset"))
+                                                    .on_hover_text(crate::i18n::t("material.reset-original"))
                                                     .clicked()
                                                 {
                                                     layer.filter_mode_override = None;
@@ -763,7 +798,7 @@ impl Ui {
 
                                                 if layer.filter_mode_override.is_some() {
                                                     ui.label(
-                                                        egui::RichText::new(t!("materials.modified"))
+                                                        egui::RichText::new(crate::i18n::t("material.modified"))
                                                             .small()
                                                             .weak(),
                                                     );
@@ -784,7 +819,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::None
                                                             ),
-                                                            t!("filter.none"),
+                                                            crate::i18n::t("filter.none"),
                                                         )
                                                         .clicked()
                                                     {
@@ -797,7 +832,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Transparent
                                                             ),
-                                                            t!("filter.transparent"),
+                                                            crate::i18n::t("filter.transparent"),
                                                         )
                                                         .clicked()
                                                     {
@@ -810,7 +845,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Blend
                                                             ),
-                                                            t!("filter.blend"),
+                                                            crate::i18n::t("filter.blend"),
                                                         )
                                                         .clicked()
                                                     {
@@ -823,7 +858,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Additive
                                                             ),
-                                                            t!("filter.additive"),
+                                                            crate::i18n::t("filter.additive"),
                                                         )
                                                         .clicked()
                                                     {
@@ -836,7 +871,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::AddAlpha
                                                             ),
-                                                            t!("filter.add_alpha"),
+                                                            crate::i18n::t("filter.add-alpha"),
                                                         )
                                                         .clicked()
                                                     {
@@ -849,7 +884,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Modulate
                                                             ),
-                                                            t!("filter.modulate"),
+                                                            crate::i18n::t("filter.modulate"),
                                                         )
                                                         .clicked()
                                                     {
@@ -862,7 +897,7 @@ impl Ui {
                                                                 current_mode,
                                                                 FilterMode::Modulate2x
                                                             ),
-                                                            t!("filter.modulate2x"),
+                                                            crate::i18n::t("filter.modulate-2x"),
                                                         )
                                                         .clicked()
                                                     {
@@ -928,10 +963,7 @@ impl Ui {
 
                                         let shading_header_id =
                                             egui::Id::new(("shading", mat_id, layer_id));
-                                        egui::CollapsingHeader::new(t!(
-                                            "materials.shading",
-                                            mask = shading_mask.as_str()
-                                        ))
+                                        egui::CollapsingHeader::new(crate::i18n::t_args("material.shading-flags", [("mask", shading_mask.as_str().into())]))
                                         .id_salt(shading_header_id)
                                         .default_open(false)
                                         .show(ui, |ui| {
@@ -941,7 +973,7 @@ impl Ui {
                                                 // Reset button
                                                 if ui
                                                     .small_button("↺")
-                                                    .on_hover_text(t!("materials.reset"))
+                                                    .on_hover_text(crate::i18n::t("material.reset-original"))
                                                     .clicked()
                                                 {
                                                     layer.shading_flags_override = None;
@@ -949,7 +981,7 @@ impl Ui {
 
                                                 if layer.shading_flags_override.is_some() {
                                                     ui.label(
-                                                        egui::RichText::new(t!("materials.modified"))
+                                                        egui::RichText::new(crate::i18n::t("material.modified"))
                                                             .small()
                                                             .weak(),
                                                     );
@@ -1008,7 +1040,7 @@ impl Ui {
 
                                         // Alpha slider with reset button
                                         ui.horizontal(|ui| {
-                                            ui.label(t!("materials.alpha"));
+                                            ui.label(crate::i18n::t("material.opacity"));
 
                                             // Get current alpha (either override or original)
                                             let mut current_alpha =
@@ -1031,7 +1063,7 @@ impl Ui {
                                             // Reset button
                                             if ui
                                                 .small_button("↺")
-                                                .on_hover_text(t!("materials.reset"))
+                                                .on_hover_text(crate::i18n::t("material.reset-original"))
                                                 .clicked()
                                             {
                                                 layer.alpha_override = None;
@@ -1040,9 +1072,12 @@ impl Ui {
                                             // Show original value if overridden
                                             if layer.alpha_override.is_some() {
                                                 ui.label(
-                                                    egui::RichText::new(t!(
-                                                        "materials.orig",
-                                                        value = format!("{:.2}", layer.alpha)
+                                                    egui::RichText::new(crate::i18n::t_args(
+                                                        "material.original-value",
+                                                        [(
+                                                            "value",
+                                                            format!("{:.2}", layer.alpha).into(),
+                                                        )],
                                                     ))
                                                     .small()
                                                     .weak(),
@@ -1055,7 +1090,7 @@ impl Ui {
                         }
                     });
                 } else {
-                    ui.label(t!("model_info.none"));
+                    ui.label(crate::i18n::t("info.no-model"));
                 }
             });
 
@@ -1070,7 +1105,7 @@ impl Ui {
         model: &Option<Model>,
         ui_settings: &mut crate::settings::UiSettings,
     ) {
-        egui::Window::new(t!("animation.title"))
+        egui::Window::new(crate::i18n::t("window.animation"))
             .default_width(350.0)
             .default_height(500.0)
             .resizable(true)
@@ -1079,12 +1114,12 @@ impl Ui {
                 if let Some(model) = model {
                     if !model.sequences.is_empty() {
                         ui.horizontal(|ui| {
-                            ui.label(t!("animation.sequences"));
+                            ui.label(crate::i18n::t("anim.sequence"));
                             ui.separator();
 
                             // Control buttons
                             ui.add_enabled_ui(!self.is_playing, |ui| {
-                                if ui.button(t!("animation.play")).clicked() {
+                                if ui.button(crate::i18n::t("anim.play")).clicked() {
                                     self.is_playing = true;
                                     self.use_animation = true; // Enable animated transforms
 
@@ -1104,7 +1139,7 @@ impl Ui {
                             });
 
                             ui.add_enabled_ui(self.is_playing, |ui| {
-                                if ui.button(t!("animation.pause")).clicked() {
+                                if ui.button(crate::i18n::t("anim.pause")).clicked() {
                                     self.is_playing = false;
                                     self.last_update_time = 0.0;
                                 }
@@ -1115,7 +1150,7 @@ impl Ui {
                             let can_stop =
                                 self.is_playing || self.current_frame > seq.start_frame as f32;
                             ui.add_enabled_ui(can_stop, |ui| {
-                                if ui.button(t!("animation.stop")).clicked() {
+                                if ui.button(crate::i18n::t("anim.stop")).clicked() {
                                     self.is_playing = false;
                                     self.last_update_time = 0.0;
                                     self.current_frame = seq.start_frame as f32;
@@ -1125,7 +1160,7 @@ impl Ui {
                             ui.separator();
 
                             // Reset button - disables animation, returns to original parsed data
-                            if ui.button(t!("animation.reset")).clicked() {
+                            if ui.button(crate::i18n::t("anim.reset")).clicked() {
                                 self.is_playing = false;
                                 self.use_animation = false; // Disable animated transforms
                                 self.last_update_time = 0.0;
@@ -1134,9 +1169,9 @@ impl Ui {
                             }
 
                             let loop_button = if self.is_looping {
-                                t!("animation.loop")
+                                crate::i18n::t("anim.loop")
                             } else {
-                                t!("animation.once")
+                                crate::i18n::t("anim.once")
                             };
                             if ui.button(loop_button).clicked() {
                                 self.is_looping = !self.is_looping;
@@ -1146,7 +1181,7 @@ impl Ui {
                         ui.separator();
 
                         // Sequences list - full width, flexible height
-                        ui.label(t!("animation.list"));
+                        ui.label(crate::i18n::t("anim.list"));
                         let available_height = ui.available_height() - 200.0; // Reserve space for details below
                         egui::ScrollArea::vertical()
                             .max_height(available_height.max(150.0))
@@ -1170,43 +1205,56 @@ impl Ui {
 
                         // Show sequence details (without border)
                         let seq = &model.sequences[self.selected_sequence];
-                        ui.label(t!("animation.current", name = seq.name.as_str()));
-                        ui.label(t!(
-                            "animation.frames",
-                            start = seq.start_frame,
-                            end = seq.end_frame
+                        ui.label(crate::i18n::t_args(
+                            "anim.name",
+                            [("name", seq.name.as_str().into())],
                         ));
-                        ui.label(t!(
-                            "animation.duration",
-                            frames = seq.end_frame - seq.start_frame,
-                            seconds = format!(
-                                "{:.1}",
-                                (seq.end_frame - seq.start_frame) as f32 / 30.0
-                            )
+                        ui.label(crate::i18n::t_args(
+                            "anim.frame-range",
+                            [
+                                ("start", seq.start_frame.into()),
+                                ("end", seq.end_frame.into()),
+                            ],
+                        ));
+                        ui.label(crate::i18n::t_args(
+                            "anim.duration",
+                            [
+                                ("frames", (seq.end_frame - seq.start_frame).into()),
+                                (
+                                    "seconds",
+                                    format!(
+                                        "{:.1}",
+                                        (seq.end_frame - seq.start_frame) as f32 / 30.0
+                                    )
+                                    .into(),
+                                ),
+                            ],
                         ));
 
-                        // Show current state
                         let frame = format!("{:.0}", self.current_frame);
                         let state_text = if self.is_playing {
-                            t!("animation.playing", frame = frame.as_str())
+                            crate::i18n::t_args("anim.playing", [("frame", frame.as_str().into())])
                         } else {
-                            t!("animation.paused", frame = frame.as_str())
+                            crate::i18n::t_args("anim.paused", [("frame", frame.as_str().into())])
                         };
                         ui.label(egui::RichText::new(state_text).strong());
 
                         if seq.non_looping {
-                            ui.label(t!("animation.non_looping"));
+                            ui.label(crate::i18n::t("anim.non-looping"));
                         }
 
                         if let Some(rarity) = seq.rarity {
-                            ui.label(t!("animation.rarity", value = rarity));
+                            ui.label(crate::i18n::t_args(
+                                "anim.rarity",
+                                [("value", rarity.into())],
+                            ));
                         }
 
                         ui.separator();
 
                         // Frame slider
                         ui.horizontal(|ui| {
-                            ui.label(t!("animation.frame"));
+                            ui.label(crate::i18n::t("anim.frame"));
                             let frame_range = seq.start_frame as f32..=seq.end_frame as f32;
                             let slider_response = ui.add(
                                 egui::Slider::new(&mut self.current_frame, frame_range).integer(),
@@ -1222,10 +1270,10 @@ impl Ui {
                             ui.label(format!("{:.0}", self.current_frame));
                         });
                     } else {
-                        ui.label(t!("animation.none"));
+                        ui.label(crate::i18n::t("anim.none"));
                     }
                 } else {
-                    ui.label(t!("model_info.none"));
+                    ui.label(crate::i18n::t("info.no-model"));
                 }
             });
 
@@ -1237,5 +1285,5 @@ impl Ui {
 
 fn toggle_label(enabled: bool, key: &str) -> String {
     let mark = if enabled { "✅" } else { "⬜" };
-    format!("{} {}", mark, t!(key))
+    format!("{} {}", mark, crate::i18n::t(key))
 }

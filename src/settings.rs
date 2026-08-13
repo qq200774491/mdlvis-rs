@@ -1,4 +1,5 @@
 use crate::CONFY_APP_NAME;
+use crate::i18n;
 
 use serde::{Deserialize, Serialize};
 
@@ -64,38 +65,38 @@ impl ColorSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
-    En,
     ZhCn,
-}
-
-impl Default for Language {
-    fn default() -> Self {
-        Self::ZhCn
-    }
+    EnUs,
 }
 
 impl Language {
-    pub const ALL: [Language; 2] = [Language::En, Language::ZhCn];
+    pub const ALL: [Language; 2] = [Language::ZhCn, Language::EnUs];
 
-    pub fn locale(self) -> &'static str {
-        match self {
-            Language::En => "en",
-            Language::ZhCn => "zh-CN",
+    pub fn from_tag(tag: &str) -> Self {
+        match i18n::normalize_locale(tag) {
+            "en-US" => Language::EnUs,
+            _ => Language::ZhCn,
         }
     }
 
-    pub fn native_name(self) -> &'static str {
+    pub fn locale(self) -> &'static str {
         match self {
-            Language::En => "English",
-            Language::ZhCn => "中文",
+            Language::ZhCn => "zh-CN",
+            Language::EnUs => "en-US",
+        }
+    }
+
+    pub fn native_name(self) -> String {
+        match self {
+            Language::ZhCn => i18n::t("locale.zh-CN"),
+            Language::EnUs => i18n::t("locale.en-US"),
         }
     }
 
     pub fn apply(self) {
-        rust_i18n::set_locale(self.locale());
+        i18n::set_locale(self.locale());
     }
 }
 
@@ -108,8 +109,12 @@ pub struct UiSettings {
     pub show_geosets: bool,
     pub show_animation: bool,
     pub show_materials: bool,
-    #[serde(default)]
-    pub language: Language,
+    #[serde(default = "default_locale")]
+    pub locale: String,
+}
+
+fn default_locale() -> String {
+    i18n::DEFAULT_LOCALE.to_string()
 }
 
 impl Default for UiSettings {
@@ -122,22 +127,32 @@ impl Default for UiSettings {
             show_geosets: false,
             show_animation: false,
             show_materials: false,
-            language: Language::default(),
+            locale: default_locale(),
         }
     }
 }
 
 impl UiSettings {
     pub fn load() -> Self {
-        confy::load(CONFY_APP_NAME, "ui").unwrap_or_default()
+        let mut settings: UiSettings = confy::load(CONFY_APP_NAME, "ui").unwrap_or_default();
+        settings.locale = i18n::normalize_locale(&settings.locale).to_string();
+        settings
     }
 
     pub fn save(&self) {
         let _ = confy::store(CONFY_APP_NAME, "ui", self);
     }
+
+    pub fn language(&self) -> Language {
+        Language::from_tag(&self.locale)
+    }
+
+    pub fn set_language(&mut self, language: Language) {
+        self.locale = language.locale().to_string();
+        language.apply();
+    }
 }
 
-// Aggregate struct for convenience
 pub struct Settings {
     pub display: DisplaySettings,
     pub colors: ColorSettings,
@@ -151,7 +166,7 @@ impl Settings {
             colors: ColorSettings::load(),
             ui: UiSettings::load(),
         };
-        settings.ui.language.apply();
+        settings.ui.language().apply();
         settings
     }
 }

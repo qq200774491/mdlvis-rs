@@ -58,7 +58,7 @@ fn configure_chinese_font(ctx: &egui::Context) {
         return;
     }
 
-    eprintln!("{}", t!("error.font_missing"));
+    eprintln!("{}", crate::i18n::t("font.missing-cjk"));
 }
 
 pub struct AppHandler {
@@ -89,7 +89,7 @@ impl ApplicationHandler for AppHandler {
                 event_loop
                     .create_window(
                         Window::default_attributes()
-                            .with_title(t!("window.title").as_ref())
+                            .with_title(crate::i18n::t("app.window-title"))
                             .with_inner_size(winit::dpi::LogicalSize::new(1200.0, 800.0)),
                     )
                     .unwrap(),
@@ -151,12 +151,24 @@ impl ApplicationHandler for AppHandler {
             // Check if there's a pending model to load
             if let Some(path) = self.pending_model_path.take() {
                 if let Err(e) = self.runtime.block_on(app.load_model(&path)) {
-                    eprintln!("{}", t!("error.load_model", path = path.as_str(), error = e));
+                    eprintln!(
+                        "{}",
+                        crate::i18n::t_args(
+                            "error.load-model",
+                            [
+                                ("path", path.as_str().into()),
+                                ("error", e.to_string().into()),
+                            ],
+                        )
+                    );
                 }
             }
 
             if let Err(e) = app.render() {
-                eprintln!("{}", t!("error.render", error = format!("{:?}", e)));
+                eprintln!(
+                    "{}",
+                    crate::i18n::t_args("error.render", [("error", format!("{e:?}").into())])
+                );
             }
             if let Some(window) = &self.window {
                 window.request_redraw();

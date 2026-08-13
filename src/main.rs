@@ -1,11 +1,7 @@
-#[macro_use]
-extern crate rust_i18n;
-
-i18n!("locales", fallback = "en");
-
 mod animation;
 mod app;
 mod error;
+mod i18n;
 mod material;
 mod model;
 mod parser;
@@ -13,6 +9,8 @@ mod renderer;
 mod settings;
 mod texture;
 mod ui;
+#[cfg(test)]
+mod verification;
 
 use crate::app::handler::AppHandler;
 use crate::app::handler_registry;
@@ -36,22 +34,24 @@ fn main() -> Result<(), MdlError> {
         } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
             s.clone()
         } else {
-            t!("panic.unknown").to_string()
+            crate::i18n::t("panic.unknown")
         };
 
         let location = if let Some(location) = panic_info.location() {
-            t!(
+            crate::i18n::t_args(
                 "panic.location",
-                file = location.file(),
-                line = location.line(),
-                column = location.column()
+                [
+                    ("file", location.file().into()),
+                    ("line", location.line().into()),
+                    ("column", location.column().into()),
+                ],
             )
-            .to_string()
         } else {
             String::new()
         };
 
-        let full_message = t!("panic.crashed", message = message, location = location).to_string();
+        let body = crate::i18n::t("panic.crashed");
+        let full_message = format!("{body}\n\n{message}{location}");
 
         eprintln!("{}", full_message);
 
@@ -60,7 +60,7 @@ fn main() -> Result<(), MdlError> {
         {
             use rfd::MessageDialog;
             MessageDialog::new()
-                .set_title(t!("panic.title").as_ref())
+                .set_title(&crate::i18n::t("panic.title"))
                 .set_description(&full_message)
                 .set_level(rfd::MessageLevel::Error)
                 .show();
@@ -69,7 +69,7 @@ fn main() -> Result<(), MdlError> {
         #[cfg(target_os = "linux")]
         {
             eprintln!("\n{}\n", "=".repeat(80));
-            eprintln!("{}", t!("panic.report"));
+            eprintln!("{}", crate::i18n::t("panic.report"));
             eprintln!("{}\n", "=".repeat(80));
         }
     }));
