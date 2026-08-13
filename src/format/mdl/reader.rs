@@ -17,7 +17,7 @@ use crate::model::node::{
 use crate::model::objects::{
     Attachment, Camera, CollisionShape, CollisionType, EventObject, GeosetAnim, GlobalSequence,
     LayerRef, Light, LightType, MaterialFlags, ParticleEmitter, ParticleEmitter2,
-    ParticleEmitter2Flags, RibbonEmitter, TextureAnim, TextureFlags,
+    ParticleEmitter2Flags, ParticleEmitterUses, RibbonEmitter, TextureAnim, TextureFlags,
 };
 use crate::model::skeleton::{AnimationController, Bone, Helper, Keyframe};
 use crate::model::texture::Texture;
@@ -352,21 +352,31 @@ fn parse_attachments(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
 fn parse_particle_emitters(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
     for (body, label) in repeated_blocks(root, "ParticleEmitter") {
         let node = parse_node(body, label, TYPE_HELP, model)?;
+        let emission_rate_track = parse_track(body, "EmissionRate", 1, model)?;
+        let gravity_track = parse_track(body, "Gravity", 1, model)?;
+        let longitude_track = parse_track(body, "Longitude", 1, model)?;
+        let latitude_track = parse_track(body, "Latitude", 1, model)?;
+        let life_span_track = parse_track(body, "LifeSpan", 1, model)?;
+        let init_velocity_track = parse_track(body, "InitVelocity", 1, model)?;
         model.particle_emitters.push(ParticleEmitter {
             node,
-            uses_type: Default::default(),
+            uses_type: if contains_word(body, "EmitterUsesMDL") {
+                ParticleEmitterUses::Mdl
+            } else {
+                ParticleEmitterUses::Tga
+            },
             emission_rate: optional_number(body, "EmissionRate")?.unwrap_or(0.0),
-            emission_rate_track: TrackId::NONE,
+            emission_rate_track,
             gravity: optional_number(body, "Gravity")?.unwrap_or(0.0),
-            gravity_track: TrackId::NONE,
+            gravity_track,
             longitude: optional_number(body, "Longitude")?.unwrap_or(0.0),
-            longitude_track: TrackId::NONE,
+            longitude_track,
             latitude: optional_number(body, "Latitude")?.unwrap_or(0.0),
-            latitude_track: TrackId::NONE,
+            latitude_track,
             life_span: optional_number(body, "LifeSpan")?.unwrap_or(0.0),
-            life_span_track: TrackId::NONE,
+            life_span_track,
             init_velocity: optional_number(body, "InitVelocity")?.unwrap_or(0.0),
-            init_velocity_track: TrackId::NONE,
+            init_velocity_track,
             path: optional_string(body, "Path")?.unwrap_or_default(),
         });
     }
@@ -440,18 +450,23 @@ fn parse_particle_emitters_2(root: &[Node], model: &mut Model) -> Result<(), Mdl
 fn parse_ribbons(root: &[Node], model: &mut Model) -> Result<(), MdlError> {
     for (body, label) in repeated_blocks(root, "RibbonEmitter") {
         let node = parse_node(body, label, TYPE_HELP, model)?;
+        let height_above_track = parse_track(body, "HeightAbove", 1, model)?;
+        let height_below_track = parse_track(body, "HeightBelow", 1, model)?;
+        let alpha_track = parse_track(body, "Alpha", 1, model)?;
+        let color_track = parse_track(body, "Color", 3, model)?;
+        let texture_slot_track = parse_track(body, "TextureSlot", 1, model)?;
         model.ribbons.push(RibbonEmitter {
             node,
             height_above: optional_number(body, "HeightAbove")?.unwrap_or(0.0),
-            height_above_track: TrackId::NONE,
+            height_above_track,
             height_below: optional_number(body, "HeightBelow")?.unwrap_or(0.0),
-            height_below_track: TrackId::NONE,
+            height_below_track,
             alpha: optional_number(body, "Alpha")?.unwrap_or(1.0),
-            alpha_track: TrackId::NONE,
+            alpha_track,
             color: optional_vector(body, "Color")?.unwrap_or([1.0; 3]),
-            color_track: TrackId::NONE,
+            color_track,
             texture_slot: optional_number(body, "TextureSlot")?.unwrap_or(0),
-            texture_slot_track: TrackId::NONE,
+            texture_slot_track,
             emission_rate: optional_number(body, "EmissionRate")?.unwrap_or(0),
             life_span: optional_number(body, "LifeSpan")?.unwrap_or(0.0),
             gravity: optional_number(body, "Gravity")?.unwrap_or(0.0),

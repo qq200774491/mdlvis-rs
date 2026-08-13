@@ -3,7 +3,7 @@ use crate::material::{FilterMode, ShadingFlags};
 use crate::model::ids::{Extent, TrackId};
 use crate::model::model::Model;
 use crate::model::node::NodeRef;
-use crate::model::objects::{CollisionType, LightType};
+use crate::model::objects::{CollisionType, LightType, ParticleEmitterUses};
 use crate::model::skeleton::{AnimationController, Helper};
 use std::fmt::Write as FmtWrite;
 use std::fs::File;
@@ -25,6 +25,9 @@ pub fn save(writer: &mut impl Write, model: &Model) -> Result<(), MdlError> {
 }
 
 pub fn to_string(model: &Model) -> Result<String, MdlError> {
+    if model.mdlvis_data.is_some() {
+        return Err(MdlError::new("mdl-mdlvis-data-not-representable"));
+    }
     if !model.unknown_chunks.is_empty() {
         return Err(MdlError::new("mdl-unknown-chunks-not-representable")
             .with_arg("count", model.unknown_chunks.len()));
@@ -438,13 +441,69 @@ fn write_particle_emitters(out: &mut String, model: &Model) -> Result<(), MdlErr
             &format!("ParticleEmitter \"{}\"", escaped(&emitter.node.name)),
         );
         write_node(out, 1, &emitter.node, model)?;
-        static_field(out, 1, "EmissionRate", emitter.emission_rate);
-        static_field(out, 1, "Gravity", emitter.gravity);
-        static_field(out, 1, "Longitude", emitter.longitude);
-        static_field(out, 1, "Latitude", emitter.latitude);
-        static_field(out, 1, "LifeSpan", emitter.life_span);
-        static_field(out, 1, "InitVelocity", emitter.init_velocity);
+        write_static_or_track(
+            out,
+            1,
+            "EmissionRate",
+            emitter.emission_rate,
+            emitter.emission_rate_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "Gravity",
+            emitter.gravity,
+            emitter.gravity_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "Longitude",
+            emitter.longitude,
+            emitter.longitude_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "Latitude",
+            emitter.latitude,
+            emitter.latitude_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "LifeSpan",
+            emitter.life_span,
+            emitter.life_span_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "InitVelocity",
+            emitter.init_velocity,
+            emitter.init_velocity_track,
+            1,
+            model,
+        )?;
         quoted_field(out, 1, "Path", &emitter.path);
+        flag(
+            out,
+            1,
+            match emitter.uses_type {
+                ParticleEmitterUses::Tga => "EmitterUsesTGA",
+                ParticleEmitterUses::Mdl => "EmitterUsesMDL",
+            },
+        );
         close(out, 0, false);
     }
     Ok(())
@@ -578,11 +637,35 @@ fn write_ribbons(out: &mut String, model: &Model) -> Result<(), MdlError> {
             &format!("RibbonEmitter \"{}\"", escaped(&ribbon.node.name)),
         );
         write_node(out, 1, &ribbon.node, model)?;
-        static_field(out, 1, "HeightAbove", ribbon.height_above);
-        static_field(out, 1, "HeightBelow", ribbon.height_below);
-        static_field(out, 1, "Alpha", ribbon.alpha);
-        static_vector(out, 1, "Color", &ribbon.color);
-        static_field(out, 1, "TextureSlot", ribbon.texture_slot);
+        write_static_or_track(
+            out,
+            1,
+            "HeightAbove",
+            ribbon.height_above,
+            ribbon.height_above_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "HeightBelow",
+            ribbon.height_below,
+            ribbon.height_below_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(out, 1, "Alpha", ribbon.alpha, ribbon.alpha_track, 1, model)?;
+        if ribbon.color_track.is_none() {
+            static_vector(out, 1, "Color", &ribbon.color);
+        } else {
+            write_track_id(out, 1, "Color", ribbon.color_track, 3, model)?;
+        }
+        if ribbon.texture_slot_track.is_none() {
+            static_field(out, 1, "TextureSlot", ribbon.texture_slot);
+        } else {
+            write_track_id(out, 1, "TextureSlot", ribbon.texture_slot_track, 1, model)?;
+        }
         field(out, 1, "EmissionRate", ribbon.emission_rate);
         field(out, 1, "LifeSpan", ribbon.life_span);
         field(out, 1, "Gravity", ribbon.gravity);
