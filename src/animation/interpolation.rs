@@ -83,3 +83,90 @@ pub fn lerp_vec3(v1: &glm::Vec3, v2: &glm::Vec3, t: f32) -> glm::Vec3 {
 pub fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
+
+pub(crate) fn linear<const N: usize>(start: [f32; N], end: [f32; N], t: f32) -> [f32; N] {
+    std::array::from_fn(|index| lerp_f32(start[index], end[index], t))
+}
+
+pub(crate) fn hermite<const N: usize>(
+    start: [f32; N],
+    start_tangent: [f32; N],
+    end: [f32; N],
+    end_tangent: [f32; N],
+    t: f32,
+) -> [f32; N] {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    let h00 = 2.0 * t3 - 3.0 * t2 + 1.0;
+    let h10 = t3 - 2.0 * t2 + t;
+    let h01 = -2.0 * t3 + 3.0 * t2;
+    let h11 = t3 - t2;
+    std::array::from_fn(|index| {
+        start[index] * h00
+            + start_tangent[index] * h10
+            + end[index] * h01
+            + end_tangent[index] * h11
+    })
+}
+
+pub(crate) fn bezier<const N: usize>(
+    start: [f32; N],
+    start_control: [f32; N],
+    end: [f32; N],
+    end_control: [f32; N],
+    t: f32,
+) -> [f32; N] {
+    let inverse = 1.0 - t;
+    let f1 = inverse * inverse * inverse;
+    let f2 = 3.0 * t * inverse * inverse;
+    let f3 = 3.0 * t * t * inverse;
+    let f4 = t * t * t;
+    std::array::from_fn(|index| {
+        start[index] * f1 + start_control[index] * f2 + end_control[index] * f3 + end[index] * f4
+    })
+}
+
+pub(crate) fn slerp_quaternion(start: [f32; 4], end: [f32; 4], t: f32, threshold: f32) -> [f32; 4] {
+    let start = normalize_quaternion(start);
+    let mut end = normalize_quaternion(end);
+    let mut cosine = dot(start, end);
+    if cosine < 0.0 {
+        cosine = -cosine;
+        end = end.map(|value| -value);
+    }
+    cosine = cosine.clamp(-1.0, 1.0);
+    let (start_scale, end_scale) = if 1.0 - cosine > threshold {
+        let omega = cosine.acos();
+        let sine = omega.sin();
+        (((1.0 - t) * omega).sin() / sine, (t * omega).sin() / sine)
+    } else {
+        (1.0 - t, t)
+    };
+    normalize_quaternion(std::array::from_fn(|index| {
+        start[index] * start_scale + end[index] * end_scale
+    }))
+}
+
+pub(crate) fn nested_slerp_quaternion(
+    start: [f32; 4],
+    start_control: [f32; 4],
+    end: [f32; 4],
+    end_control: [f32; 4],
+    t: f32,
+) -> [f32; 4] {
+    let values = slerp_quaternion(start, end, t, 1.0e-5);
+    let controls = slerp_quaternion(start_control, end_control, t, 1.0e-5);
+    slerp_quaternion(values, controls, 2.0 * t * (1.0 - t), 1.0e-5)
+}
+
+fn dot(left: [f32; 4], right: [f32; 4]) -> f32 {
+    left.into_iter()
+        .zip(right)
+        .map(|(left, right)| left * right)
+        .sum()
+}
+
+fn normalize_quaternion(value: [f32; 4]) -> [f32; 4] {
+    let length = dot(value, value).sqrt();
+    value.map(|component| component / length)
+}
