@@ -342,6 +342,11 @@ fn validate_controller_ref(
             .with_arg("index", idx)
             .with_arg("count", model.controllers.len())
     })?;
+    if controller.interpolation_type > 3 {
+        return Err(MdlError::new("mdx-invalid-interpolation-type")
+            .with_arg("track", track)
+            .with_arg("value", controller.interpolation_type));
+    }
     if controller.global_seq_id >= 0
         && controller.global_seq_id as usize >= model.global_sequences.len()
     {
@@ -1116,5 +1121,31 @@ mod tests {
         let tangent_error = model_with_translation(tangent_controller);
         let err = serialize(&tangent_error).expect_err("short translation tangent must fail");
         assert_eq!(err.key, "mdx-invalid-tangent-width");
+    }
+
+    #[test]
+    fn invalid_interpolation_type_is_rejected_without_touching_targets() {
+        let mut invalid_controller = controller(-1, vec![1.0, 2.0, 3.0]);
+        invalid_controller.interpolation_type = 99;
+        let model = model_with_translation(invalid_controller);
+        let existing = temp_path("invalid-interpolation-existing");
+        let missing = temp_path("invalid-interpolation-missing");
+        fs::write(&existing, b"keep me").expect("create existing target");
+        let _ = fs::remove_file(&missing);
+
+        let result = std::panic::catch_unwind(|| serialize(&model));
+        let err = result
+            .expect("invalid interpolation must not panic")
+            .expect_err("invalid interpolation must fail");
+        assert_eq!(err.key, "mdx-invalid-interpolation-type");
+        assert!(save_path(&existing, &model).is_err());
+        assert_eq!(
+            fs::read(&existing).expect("read existing target"),
+            b"keep me"
+        );
+        assert!(save_path(&missing, &model).is_err());
+        assert!(!missing.exists());
+
+        fs::remove_file(existing).expect("remove existing target");
     }
 }
