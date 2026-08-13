@@ -144,6 +144,77 @@ Camera "View" {
 }
 "#;
 
+const PRE2_STATIC: &str = r#"
+Version { FormatVersion 800, }
+Model "Static PRE2" { }
+ParticleEmitter2 "Smoke" {
+    ObjectId 7,
+    Blend,
+    static Speed 1,
+    static Variation 2,
+    static Latitude 3,
+    static Gravity 4,
+    static EmissionRate 5,
+    static Width 6,
+    static Length 7,
+    Head,
+}
+"#;
+
+const PRE2_ANIMATED: &str = r#"
+Version { FormatVersion 800, }
+Model "Animated PRE2" { }
+GlobalSequences 1 { Duration 2000, }
+ParticleEmitter2 "Smoke" {
+    ObjectId 7,
+    Blend,
+    Visibility 1 {
+        Linear,
+        0: 0.5,
+    }
+    Speed 1 {
+        Linear,
+        0: 1,
+    }
+    Variation 1 {
+        Hermite,
+        GlobalSeqId 0,
+        0: 2,
+            InTan 1.5,
+            OutTan 2.5,
+    }
+    Latitude 1 {
+        Bezier,
+        0: 3,
+            InTan 2.5,
+            OutTan 3.5,
+    }
+    Gravity 1 {
+        Linear,
+        GlobalSeqId 0,
+        0: 4,
+    }
+    EmissionRate 1 {
+        Hermite,
+        0: 5,
+            InTan 4.5,
+            OutTan 5.5,
+    }
+    Width 1 {
+        Bezier,
+        GlobalSeqId 0,
+        0: 6,
+            InTan 5.5,
+            OutTan 6.5,
+    }
+    Length 1 {
+        Linear,
+        0: 7,
+    }
+    Head,
+}
+"#;
+
 #[test]
 fn minimal_model_round_trips_semantically() {
     let first = parse_str(MINIMAL).expect("minimal MDL should parse");
@@ -155,6 +226,160 @@ fn minimal_model_round_trips_semantically() {
         serde_json::to_value(first).unwrap(),
         serde_json::to_value(second).unwrap()
     );
+}
+
+#[test]
+fn particle_emitter_2_static_fields_round_trip_without_tracks() {
+    let first = parse_str(PRE2_STATIC).expect("static PRE2 should parse");
+    let emitter = &first.particle_emitters_2[0];
+    assert_eq!(
+        [
+            emitter.speed,
+            emitter.variation,
+            emitter.latitude,
+            emitter.gravity,
+            emitter.emission_rate,
+            emitter.width,
+            emitter.length,
+        ],
+        [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]
+    );
+    assert!(
+        [
+            emitter.speed_track,
+            emitter.variation_track,
+            emitter.latitude_track,
+            emitter.gravity_track,
+            emitter.emission_rate_track,
+            emitter.width_track,
+            emitter.length_track,
+        ]
+        .into_iter()
+        .all(|track| track.is_none())
+    );
+
+    let text = to_string(&first).expect("static PRE2 should write");
+    for field in [
+        "Speed",
+        "Variation",
+        "Latitude",
+        "Gravity",
+        "EmissionRate",
+        "Width",
+        "Length",
+    ] {
+        assert!(text.contains(&format!("static {field} ")));
+    }
+    let second = parse_str(&text).expect("written static PRE2 should parse");
+    assert_eq!(
+        serde_json::to_value(first).unwrap(),
+        serde_json::to_value(second).unwrap()
+    );
+}
+
+#[test]
+fn particle_emitter_2_animated_fields_round_trip_as_scalar_tracks() {
+    let first = parse_str(PRE2_ANIMATED).expect("animated PRE2 should parse");
+    let emitter = &first.particle_emitters_2[0];
+    assert!(!emitter.node.visibility.is_none(), "KP2V must stay bound");
+
+    let tracks = [
+        (emitter.speed_track, 1, -1, 1.0, None),
+        (emitter.variation_track, 2, 0, 2.0, Some((1.5, 2.5))),
+        (emitter.latitude_track, 3, -1, 3.0, Some((2.5, 3.5))),
+        (emitter.gravity_track, 1, 0, 4.0, None),
+        (emitter.emission_rate_track, 2, -1, 5.0, Some((4.5, 5.5))),
+        (emitter.width_track, 3, 0, 6.0, Some((5.5, 6.5))),
+        (emitter.length_track, 1, -1, 7.0, None),
+    ];
+    for (id, interpolation, global_seq_id, value, tangents) in tracks {
+        let controller = &first.controllers[id.0 as usize];
+        assert_eq!(controller.interpolation_type, interpolation);
+        assert_eq!(controller.global_seq_id, global_seq_id);
+        assert_eq!(controller.keyframes[0].data, vec![value]);
+        match tangents {
+            Some((in_tan, out_tan)) => {
+                assert_eq!(controller.keyframes[0].in_tan, vec![in_tan]);
+                assert_eq!(controller.keyframes[0].out_tan, vec![out_tan]);
+            }
+            None => {
+                assert!(controller.keyframes[0].in_tan.is_empty());
+                assert!(controller.keyframes[0].out_tan.is_empty());
+            }
+        }
+    }
+
+    let text = to_string(&first).expect("animated PRE2 should write");
+    for field in [
+        "Speed",
+        "Variation",
+        "Latitude",
+        "Gravity",
+        "EmissionRate",
+        "Width",
+        "Length",
+    ] {
+        assert!(text.contains(&format!("\n\t{field} 1 {{")));
+        assert!(!text.contains(&format!("static {field} ")));
+    }
+    let second = parse_str(&text).expect("written animated PRE2 should parse");
+    assert_eq!(
+        serde_json::to_value(first).unwrap(),
+        serde_json::to_value(second).unwrap()
+    );
+}
+
+#[test]
+fn particle_emitter_2_writer_rejects_invalid_tracks_without_touching_targets() {
+    let mut invalid_index = parse_str(PRE2_ANIMATED).unwrap();
+    invalid_index.particle_emitters_2[0].speed_track.0 = i32::MAX;
+    assert_eq!(
+        to_string(&invalid_index).unwrap_err().key,
+        "mdl-invalid-controller-index"
+    );
+    assert_rejected_save_preserves_targets(&invalid_index, "index");
+
+    let mut invalid_width = parse_str(PRE2_ANIMATED).unwrap();
+    let index = invalid_width.particle_emitters_2[0].speed_track.0 as usize;
+    invalid_width.controllers[index].keyframes[0].data.push(2.0);
+    assert_eq!(
+        to_string(&invalid_width).unwrap_err().key,
+        "mdl-invalid-track-width"
+    );
+    assert_rejected_save_preserves_targets(&invalid_width, "width");
+
+    let mut invalid_tangent = parse_str(PRE2_ANIMATED).unwrap();
+    let index = invalid_tangent.particle_emitters_2[0].variation_track.0 as usize;
+    invalid_tangent.controllers[index].keyframes[0]
+        .out_tan
+        .clear();
+    assert_eq!(
+        to_string(&invalid_tangent).unwrap_err().key,
+        "mdl-invalid-tangent-size"
+    );
+    assert_rejected_save_preserves_targets(&invalid_tangent, "tangent");
+}
+
+fn assert_rejected_save_preserves_targets(model: &Model, case: &str) {
+    let prefix = format!(
+        "mdlvis-mdl-pre2-{case}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let existing_path = std::env::temp_dir().join(format!("{prefix}-existing.mdl"));
+    let missing_path = std::env::temp_dir().join(format!("{prefix}-missing.mdl"));
+    let _ = std::fs::remove_file(&missing_path);
+    std::fs::write(&existing_path, b"keep me").unwrap();
+
+    assert!(super::save_path(&existing_path, model).is_err());
+    assert_eq!(std::fs::read(&existing_path).unwrap(), b"keep me");
+    assert!(super::save_path(&missing_path, model).is_err());
+    assert!(!missing_path.exists());
+
+    std::fs::remove_file(existing_path).unwrap();
 }
 
 #[test]

@@ -374,6 +374,13 @@ fn parse_particle_emitters_2(root: &[Node], model: &mut Model) -> Result<(), Mdl
             .transpose()?
             .unwrap_or([[1.0; 3]; 3]);
         let alpha = optional_vector::<3>(body, "Alpha")?.unwrap_or([255.0; 3]);
+        let speed_track = parse_track(body, "Speed", 1, model)?;
+        let variation_track = parse_track(body, "Variation", 1, model)?;
+        let latitude_track = parse_track(body, "Latitude", 1, model)?;
+        let gravity_track = parse_track(body, "Gravity", 1, model)?;
+        let emission_rate_track = parse_track(body, "EmissionRate", 1, model)?;
+        let width_track = parse_track(body, "Width", 1, model)?;
+        let length_track = parse_track(body, "Length", 1, model)?;
         model.particle_emitters_2.push(ParticleEmitter2 {
             node,
             flags: ParticleEmitter2Flags {
@@ -385,20 +392,20 @@ fn parse_particle_emitters_2(root: &[Node], model: &mut Model) -> Result<(), Mdl
                 xy_quad: contains_word(body, "XYQuad"),
             },
             speed: optional_number(body, "Speed")?.unwrap_or(0.0),
-            speed_track: TrackId::NONE,
+            speed_track,
             variation: optional_number(body, "Variation")?.unwrap_or(0.0),
-            variation_track: TrackId::NONE,
+            variation_track,
             latitude: optional_number(body, "Latitude")?.unwrap_or(0.0),
-            latitude_track: TrackId::NONE,
+            latitude_track,
             gravity: optional_number(body, "Gravity")?.unwrap_or(0.0),
-            gravity_track: TrackId::NONE,
+            gravity_track,
             life_span: optional_number(body, "LifeSpan")?.unwrap_or(0.0),
             emission_rate: optional_number(body, "EmissionRate")?.unwrap_or(0.0),
-            emission_rate_track: TrackId::NONE,
+            emission_rate_track,
             width: optional_number(body, "Width")?.unwrap_or(0.0),
-            width_track: TrackId::NONE,
+            width_track,
             length: optional_number(body, "Length")?.unwrap_or(0.0),
-            length_track: TrackId::NONE,
+            length_track,
             squirt: contains_word(body, "Squirt"),
             blend_mode: particle_blend_mode(body),
             rows: optional_number(body, "Rows")?.unwrap_or(1),

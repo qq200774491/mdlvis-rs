@@ -459,13 +459,69 @@ fn write_particle_emitters_2(out: &mut String, model: &Model) -> Result<(), MdlE
         );
         write_node(out, 1, &emitter.node, model)?;
         flag(out, 1, particle_blend_name(emitter.blend_mode)?);
-        static_field(out, 1, "Speed", emitter.speed);
-        static_field(out, 1, "Variation", emitter.variation);
-        static_field(out, 1, "Latitude", emitter.latitude);
-        static_field(out, 1, "Gravity", emitter.gravity);
-        static_field(out, 1, "EmissionRate", emitter.emission_rate);
-        static_field(out, 1, "Width", emitter.width);
-        static_field(out, 1, "Length", emitter.length);
+        write_static_or_track(
+            out,
+            1,
+            "Speed",
+            emitter.speed,
+            emitter.speed_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "Variation",
+            emitter.variation,
+            emitter.variation_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "Latitude",
+            emitter.latitude,
+            emitter.latitude_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "Gravity",
+            emitter.gravity,
+            emitter.gravity_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "EmissionRate",
+            emitter.emission_rate,
+            emitter.emission_rate_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "Width",
+            emitter.width,
+            emitter.width_track,
+            1,
+            model,
+        )?;
+        write_static_or_track(
+            out,
+            1,
+            "Length",
+            emitter.length,
+            emitter.length_track,
+            1,
+            model,
+        )?;
         open(out, 1, "SegmentColor");
         for color in &emitter.segment_color {
             vector(out, 2, "Color", color);
