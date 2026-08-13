@@ -10,10 +10,10 @@ fn test_data(rel: &str) -> PathBuf {
         .join(rel)
 }
 
-fn require_present(count: &Count) {
+fn require_modeled(count: &Count, expected: usize) {
     match count {
-        Count::Unmodeled { present, .. } => assert!(present),
-        Count::Modeled { .. } => panic!("expected unmodeled count"),
+        Count::Modeled { value } => assert_eq!(*value, expected),
+        Count::Unmodeled { .. } => panic!("expected modeled count {expected}"),
     }
 }
 
@@ -43,6 +43,7 @@ fn nether_blast_i_structure() {
     assert!(inspection.has_chunk("GLBS"));
     assert!(inspection.has_chunk("GEOA"));
     assert!(inspection.has_chunk("PRE2"));
+    assert_eq!(inspection.chunk_size("PRE2"), Some(3119));
 
     let snap = dump_structure(&path).expect("dump Nether Blast I");
     assert_eq!(snap.sequences, 1);
@@ -56,10 +57,12 @@ fn nether_blast_i_structure() {
     assert_eq!(snap.sequence_list[0].start_frame, 7633);
     assert_eq!(snap.sequence_list[0].end_frame, 8900);
     let json = snap.to_pretty_json().expect("serialize snapshot");
-    assert!(json.contains("\"status\": \"unmodeled\""));
-    require_present(&snap.global_sequences);
-    require_present(&snap.geoset_anims);
-    require_present(&snap.particle_emitters_2);
+    assert!(json.contains("\"status\": \"modeled\""));
+    require_modeled(&snap.global_sequences, 1);
+    require_modeled(&snap.geoset_anims, 1);
+    require_modeled(&snap.particle_emitters_2, 9);
+    require_modeled(&snap.lights, 1);
+    require_modeled(&snap.events, 1);
 }
 
 #[test]
@@ -80,9 +83,19 @@ fn ember_forge_structure() {
     assert_eq!(snap.helpers, 35);
     assert_eq!(snap.materials, 12);
     assert_eq!(snap.layers, 24);
-    require_present(&snap.texture_anims);
-    require_present(&snap.geoset_anims);
-    require_present(&snap.lights);
+    require_modeled(&snap.texture_anims, 1);
+    match &snap.geoset_anims {
+        Count::Modeled { value } => assert!(*value > 0),
+        Count::Unmodeled { .. } => panic!("GEOA should be modeled"),
+    }
+    match &snap.lights {
+        Count::Modeled { value } => assert!(*value > 0),
+        Count::Unmodeled { .. } => panic!("LITE should be modeled"),
+    }
+    match &snap.cameras {
+        Count::Modeled { value } => assert_eq!(*value, 1),
+        Count::Unmodeled { .. } => panic!("CAMS should be modeled"),
+    }
 }
 
 #[test]
@@ -99,7 +112,11 @@ fn arthas_local_structure_if_present() {
     assert_eq!(snap.faces, 531);
     assert_eq!(snap.bones, 36);
     assert_eq!(snap.helpers, 4);
-    require_present(&snap.global_sequences);
+    require_modeled(&snap.global_sequences, 2);
+    match &snap.attachments {
+        Count::Modeled { value } => assert!(*value > 0),
+        Count::Unmodeled { .. } => panic!("ATCH should be modeled"),
+    }
 }
 
 #[test]
@@ -178,13 +195,13 @@ fn structure_dump_is_repeatable() {
 fn loaded_model_exposes_identified_collections() {
     let model = load_path(&test_data("Nether Blast/Nether Blast I.mdx"))
         .expect("VERS 800 MDLX still loads");
-    // Parser does not fill these yet. Empty means unparsed, not "chunk absent".
-    assert!(model.global_sequences.is_empty());
-    assert!(model.geoset_anims.is_empty());
-    assert!(model.texture_anims.is_empty());
-    assert!(model.attachments.is_empty());
-    assert!(model.lights.is_empty());
-    assert!(model.particle_emitters_2.is_empty());
+    assert_eq!(model.global_sequences.len(), 1);
+    assert_eq!(model.geoset_anims.len(), 1);
+    assert_eq!(model.lights.len(), 1);
+    assert_eq!(model.particle_emitters_2.len(), 9);
+    assert_eq!(model.events.len(), 1);
+    assert_eq!(model.pivot_points.len(), 12);
     assert!(model.unknown_chunks.is_empty());
-    assert!(model.pivot_points.is_empty());
+    assert_eq!(model.blend_time, 150);
+    assert_eq!(model.name, "Nether Blast I");
 }

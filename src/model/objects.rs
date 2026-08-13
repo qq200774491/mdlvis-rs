@@ -113,6 +113,12 @@ pub struct Light {
     pub intensity: f32,
     pub ambient_color: [f32; 3],
     pub ambient_intensity: f32,
+    pub attenuation_start_track: TrackId,
+    pub attenuation_end_track: TrackId,
+    pub intensity_track: TrackId,
+    pub color_track: TrackId,
+    pub ambient_color_track: TrackId,
+    pub ambient_intensity_track: TrackId,
 }
 
 /// `PREM` record.

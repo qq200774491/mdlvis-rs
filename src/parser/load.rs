@@ -45,52 +45,36 @@ pub fn load(file: &mut File) -> Result<Model, MdlError> {
                 seen_vers = true;
                 println!("MDX Version: {}", version);
             }
-            b"MODL" => {
-                // Model header - skip 8 bytes, then read 336 bytes for name
-                file.seek(SeekFrom::Current(8))?;
-                let mut name_bytes = [0u8; 336];
-                file.read_exact(&mut name_bytes)?;
-                model.name =
-                    String::from_utf8(name_bytes.into_iter().take_while(|&b| b != 0).collect())
-                        .unwrap_or_else(|_| "Unknown".to_string());
-                println!("Model name: {}", model.name.trim());
-            }
+            b"MODL" => crate::parser::chunks::read_modl(file, &mut model, size)?,
             b"GEOS" => {
-                // Geosets - this chunk contains multiple geosets
                 println!("Reading GEOS chunk, size: {}", size);
                 geoset_parse(file, &mut model, size)?;
                 println!("Loaded {} geosets", model.geosets.len());
             }
             b"SEQS" => {
-                // Sequences
                 crate::parser::parser::read_sequences(file, &mut model, size)?;
                 println!("Loaded {} sequences", model.sequences.len());
             }
             b"TEXS" => {
-                // Textures
                 crate::parser::parser::read_textures(file, &mut model, size)?;
                 println!("Loaded {} textures", model.textures.len());
             }
-            b"BONE" => {
-                // Bones
-                crate::parser::parser::read_bones(file, &mut model, size)?;
-            }
-            b"HELP" => {
-                // Helpers
-                crate::parser::parser::read_helpers(file, &mut model, size)?;
-            }
-            b"PIVT" => {
-                // Pivot points
-                crate::parser::parser::read_pivots(file, &mut model, size)?;
-            }
-            b"MTLS" => {
-                // Materials
-                crate::parser::parser::read_materials(file, &mut model, size)?;
-            }
-            _ => {
-                // Skip unknown chunk
-                file.seek(SeekFrom::Current(size as i64))?;
-            }
+            b"BONE" => crate::parser::parser::read_bones(file, &mut model, size)?,
+            b"HELP" => crate::parser::parser::read_helpers(file, &mut model, size)?,
+            b"PIVT" => crate::parser::parser::read_pivots(file, &mut model, size)?,
+            b"MTLS" => crate::parser::parser::read_materials(file, &mut model, size)?,
+            b"GLBS" => crate::parser::chunks::read_global_sequences(file, &mut model, size)?,
+            b"TXAN" => crate::parser::chunks::read_texture_anims(file, &mut model, size)?,
+            b"GEOA" => crate::parser::chunks::read_geoset_anims(file, &mut model, size)?,
+            b"LITE" => crate::parser::chunks::read_lights(file, &mut model, size)?,
+            b"ATCH" => crate::parser::chunks::read_attachments(file, &mut model, size)?,
+            b"PREM" => crate::parser::chunks::read_particle_emitters(file, &mut model, size)?,
+            b"PRE2" => crate::parser::chunks::read_particle_emitters_2(file, &mut model, size)?,
+            b"RIBB" => crate::parser::chunks::read_ribbons(file, &mut model, size)?,
+            b"CAMS" => crate::parser::chunks::read_cameras(file, &mut model, size)?,
+            b"EVTS" => crate::parser::chunks::read_events(file, &mut model, size)?,
+            b"CLID" => crate::parser::chunks::read_collisions(file, &mut model, size)?,
+            other => crate::parser::chunks::read_unknown_chunk(file, &mut model, *other, size)?,
         }
 
         // Ensure we're at the correct position after reading the chunk

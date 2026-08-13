@@ -18,8 +18,8 @@ pub enum Count {
 }
 
 impl Count {
-    fn unmodeled(present: bool, estimated: Option<usize>) -> Self {
-        Self::Unmodeled { present, estimated }
+    fn modeled(value: usize) -> Self {
+        Self::Modeled { value }
     }
 }
 
@@ -87,7 +87,11 @@ impl StructureSnapshot {
 }
 
 fn from_model(path: &Path, inspection: &MdxInspection, model: &Model) -> StructureSnapshot {
-    let vertices = model.geosets.iter().map(|geoset| geoset.vertices.len()).sum();
+    let vertices = model
+        .geosets
+        .iter()
+        .map(|geoset| geoset.vertices.len())
+        .sum();
     let faces = model.geosets.iter().map(|geoset| geoset.faces.len()).sum();
     let layers = model
         .materials
@@ -111,19 +115,16 @@ fn from_model(path: &Path, inspection: &MdxInspection, model: &Model) -> Structu
         bones: model.bones.len(),
         helpers: model.helpers.len(),
         controllers: model.controllers.len(),
-        global_sequences: Count::unmodeled(
-            inspection.has_chunk("GLBS"),
-            inspection.chunk_size("GLBS").map(|size| (size / 4) as usize),
-        ),
-        attachments: Count::unmodeled(inspection.has_chunk("ATCH"), None),
-        lights: Count::unmodeled(inspection.has_chunk("LITE"), None),
-        cameras: Count::unmodeled(inspection.has_chunk("CAMS"), None),
-        geoset_anims: Count::unmodeled(inspection.has_chunk("GEOA"), None),
-        texture_anims: Count::unmodeled(inspection.has_chunk("TXAN"), None),
-        particle_emitters_2: Count::unmodeled(inspection.has_chunk("PRE2"), None),
-        ribbons: Count::unmodeled(inspection.has_chunk("RIBB"), None),
-        events: Count::unmodeled(inspection.has_chunk("EVTS"), None),
-        collisions: Count::unmodeled(inspection.has_chunk("CLID"), None),
+        global_sequences: Count::modeled(model.global_sequences.len()),
+        attachments: Count::modeled(model.attachments.len()),
+        lights: Count::modeled(model.lights.len()),
+        cameras: Count::modeled(model.cameras.len()),
+        geoset_anims: Count::modeled(model.geoset_anims.len()),
+        texture_anims: Count::modeled(model.texture_anims.len()),
+        particle_emitters_2: Count::modeled(model.particle_emitters_2.len()),
+        ribbons: Count::modeled(model.ribbons.len()),
+        events: Count::modeled(model.events.len()),
+        collisions: Count::modeled(model.collisions.len()),
         sequence_list: model
             .sequences
             .iter()

@@ -8,6 +8,7 @@ pub struct Bone {
     pub pivot_point: [f32; 3],
     pub geoset_id: Option<u32>,
     pub geoset_anim_id: Option<u32>,
+    pub flags: u32,
     // Animation controller indices (-1 if not animated)
     pub translation_idx: i32,
     pub rotation_idx: i32,
@@ -24,6 +25,7 @@ impl Default for Bone {
             pivot_point: [0.0, 0.0, 0.0],
             geoset_id: None,
             geoset_anim_id: None,
+            flags: 0,
             translation_idx: -1,
             rotation_idx: -1,
             scaling_idx: -1,
@@ -38,6 +40,7 @@ pub struct Helper {
     pub object_id: u32,
     pub parent_id: i32, // -1 means no parent
     pub pivot_point: [f32; 3],
+    pub flags: u32,
     // Animation controller indices
     pub translation_idx: i32,
     pub rotation_idx: i32,
@@ -52,6 +55,7 @@ impl Default for Helper {
             object_id: 0,
             parent_id: -1,
             pivot_point: [0.0, 0.0, 0.0],
+            flags: 0,
             translation_idx: -1,
             rotation_idx: -1,
             scaling_idx: -1,
