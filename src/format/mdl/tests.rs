@@ -1,4 +1,6 @@
 use super::{parse_str, to_string};
+use crate::model::chunk::UnknownChunk;
+use crate::model::model::Model;
 use std::fs::File;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -174,6 +176,34 @@ fn accepts_utf8_bom() {
     let model = parse_str("\u{feff}Version { FormatVersion 800, } Model \"bom\" { }")
         .expect("UTF-8 BOM should be accepted");
     assert_eq!(model.name, "bom");
+}
+
+#[test]
+fn save_path_does_not_overwrite_on_serialization_error() {
+    let prefix = format!(
+        "mdlvis-mdl-save-safety-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let existing_path = std::env::temp_dir().join(format!("{prefix}-existing.mdl"));
+    let missing_path = std::env::temp_dir().join(format!("{prefix}-missing.mdl"));
+    let _ = std::fs::remove_file(&missing_path);
+    std::fs::write(&existing_path, b"keep me").unwrap();
+    let mut model = Model::default();
+    model
+        .unknown_chunks
+        .push(UnknownChunk::new(*b"ZZZZ", vec![1, 2, 3]));
+
+    assert!(super::save_path(&existing_path, &model).is_err());
+    assert_eq!(std::fs::read(&existing_path).unwrap(), b"keep me");
+
+    assert!(super::save_path(&missing_path, &model).is_err());
+    assert!(!missing_path.exists());
+
+    std::fs::remove_file(existing_path).unwrap();
 }
 
 #[test]

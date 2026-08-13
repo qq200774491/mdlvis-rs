@@ -13,8 +13,10 @@ use std::path::Path;
 const SUPPORTED_VERSION: u32 = 800;
 
 pub fn save_path(path: impl AsRef<Path>, model: &Model) -> Result<(), MdlError> {
+    let text = to_string(model)?;
     let mut file = File::create(path)?;
-    save(&mut file, model)
+    file.write_all(text.as_bytes())?;
+    Ok(())
 }
 
 pub fn save(writer: &mut impl Write, model: &Model) -> Result<(), MdlError> {
