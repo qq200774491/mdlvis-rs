@@ -18,17 +18,36 @@ use crate::parser::io::{
 };
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
 
 const SUPPORTED_VERSION: u32 = 800;
 
+trait WriteSeek: Write + Seek {}
+
+impl<T: Write + Seek + ?Sized> WriteSeek for T {}
+
 pub fn save_path(path: impl AsRef<Path>, model: &Model) -> Result<(), MdlError> {
+    let bytes = serialize(model)?;
     let mut file = File::create(path)?;
-    save(&mut file, model)
+    file.write_all(&bytes)?;
+    Ok(())
 }
 
+#[allow(dead_code)]
 pub fn save(file: &mut File, model: &Model) -> Result<(), MdlError> {
+    validate_model(model)?;
+    write_model(file, model)
+}
+
+fn serialize(model: &Model) -> Result<Vec<u8>, MdlError> {
+    validate_model(model)?;
+    let mut cursor = Cursor::new(Vec::new());
+    write_model(&mut cursor, model)?;
+    Ok(cursor.into_inner())
+}
+
+fn write_model(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     file.write_all(b"MDLX")?;
     write_chunk(file, b"VERS", |out| {
         out.write_u32::<LittleEndian>(SUPPORTED_VERSION)?;
@@ -55,15 +74,19 @@ pub fn save(file: &mut File, model: &Model) -> Result<(), MdlError> {
     write_collisions(file, model)?;
     for chunk in &model.unknown_chunks {
         file.write_all(&chunk.fourcc)?;
-        file.write_u32::<LittleEndian>(chunk.data.len() as u32)?;
+        file.write_u32::<LittleEndian>(u32::try_from(chunk.data.len()).map_err(|_| {
+            MdlError::new("mdx-chunk-too-large")
+                .with_arg("fourcc", chunk.fourcc_str())
+                .with_arg("size", chunk.data.len())
+        })?)?;
         file.write_all(&chunk.data)?;
     }
     Ok(())
 }
 
-fn write_chunk<F>(file: &mut File, fourcc: &[u8; 4], body: F) -> Result<(), MdlError>
+fn write_chunk<F>(file: &mut dyn WriteSeek, fourcc: &[u8; 4], body: F) -> Result<(), MdlError>
 where
-    F: FnOnce(&mut File) -> Result<(), MdlError>,
+    F: FnOnce(&mut dyn WriteSeek) -> Result<(), MdlError>,
 {
     file.write_all(fourcc)?;
     let size_pos = file.stream_position()?;
@@ -73,9 +96,9 @@ where
     patch_size(file, size_pos, start)
 }
 
-fn write_inclusive<F>(file: &mut File, body: F) -> Result<(), MdlError>
+fn write_inclusive<F>(file: &mut dyn WriteSeek, body: F) -> Result<(), MdlError>
 where
-    F: FnOnce(&mut File) -> Result<(), MdlError>,
+    F: FnOnce(&mut dyn WriteSeek) -> Result<(), MdlError>,
 {
     let size_pos = file.stream_position()?;
     file.write_u32::<LittleEndian>(0)?;
@@ -84,16 +107,17 @@ where
     patch_size(file, size_pos, start)
 }
 
-fn patch_size(file: &mut File, size_pos: u64, start: u64) -> Result<(), MdlError> {
+fn patch_size(file: &mut dyn WriteSeek, size_pos: u64, start: u64) -> Result<(), MdlError> {
     let end = file.stream_position()?;
-    let size = (end - start) as u32;
+    let size = u32::try_from(end - start)
+        .map_err(|_| MdlError::new("mdx-chunk-too-large").with_arg("size", end - start))?;
     file.seek(SeekFrom::Start(size_pos))?;
     file.write_u32::<LittleEndian>(size)?;
     file.seek(SeekFrom::Start(end))?;
     Ok(())
 }
 
-fn write_padded(file: &mut File, text: &str, len: usize) -> Result<(), MdlError> {
+fn write_padded(file: &mut dyn WriteSeek, text: &str, len: usize) -> Result<(), MdlError> {
     let mut buf = vec![0u8; len];
     let bytes = text.as_bytes();
     let n = bytes.len().min(len.saturating_sub(1));
@@ -102,7 +126,7 @@ fn write_padded(file: &mut File, text: &str, len: usize) -> Result<(), MdlError>
     Ok(())
 }
 
-fn write_vec3(file: &mut File, v: [f32; 3]) -> Result<(), MdlError> {
+fn write_vec3(file: &mut dyn WriteSeek, v: [f32; 3]) -> Result<(), MdlError> {
     file.write_f32::<LittleEndian>(v[0])?;
     file.write_f32::<LittleEndian>(v[1])?;
     file.write_f32::<LittleEndian>(v[2])?;
@@ -110,7 +134,7 @@ fn write_vec3(file: &mut File, v: [f32; 3]) -> Result<(), MdlError> {
 }
 
 fn write_extent(
-    file: &mut File,
+    file: &mut dyn WriteSeek,
     radius: f32,
     min: [f32; 3],
     max: [f32; 3],
@@ -122,7 +146,7 @@ fn write_extent(
 }
 
 fn write_controller(
-    file: &mut File,
+    file: &mut dyn WriteSeek,
     model: &Model,
     tag: u32,
     idx: i32,
@@ -132,13 +156,15 @@ fn write_controller(
         return Ok(());
     }
     let Some(controller) = model.controllers.get(idx as usize) else {
-        return Ok(());
+        return Err(MdlError::new("mdx-invalid-controller-index")
+            .with_arg("index", idx)
+            .with_arg("count", model.controllers.len()));
     };
     write_controller_data(file, tag, controller, as_int)
 }
 
 fn write_controller_data(
-    file: &mut File,
+    file: &mut dyn WriteSeek,
     tag: u32,
     controller: &AnimationController,
     as_int: bool,
@@ -151,26 +177,26 @@ fn write_controller_data(
     for key in &controller.keyframes {
         file.write_i32::<LittleEndian>(key.frame)?;
         if as_int {
-            let value = key.data.first().copied().unwrap_or(0.0) as i32;
+            let value = key.data[0] as i32;
             file.write_i32::<LittleEndian>(value)?;
         } else {
             for value in &key.data {
                 file.write_f32::<LittleEndian>(*value)?;
             }
-            if with_tans {
-                for value in &key.in_tan {
-                    file.write_f32::<LittleEndian>(*value)?;
-                }
-                for value in &key.out_tan {
-                    file.write_f32::<LittleEndian>(*value)?;
-                }
+        }
+        if with_tans {
+            for value in &key.in_tan {
+                file.write_f32::<LittleEndian>(*value)?;
+            }
+            for value in &key.out_tan {
+                file.write_f32::<LittleEndian>(*value)?;
             }
         }
     }
     Ok(())
 }
 
-fn write_node(file: &mut File, model: &Model, node: &NodeRef) -> Result<(), MdlError> {
+fn write_node(file: &mut dyn WriteSeek, model: &Model, node: &NodeRef) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
         write_padded(out, &node.name, 0x50)?;
         out.write_u32::<LittleEndian>(node.object_id.0)?;
@@ -210,7 +236,144 @@ fn helper_as_node(helper: &Helper) -> NodeRef {
     }
 }
 
-fn write_modl(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn validate_model(model: &Model) -> Result<(), MdlError> {
+    for bone in &model.bones {
+        validate_node(model, &bone_as_node(bone))?;
+    }
+    for helper in &model.helpers {
+        validate_node(model, &helper_as_node(helper))?;
+    }
+    for material in &model.materials {
+        for layer in &material.layers {
+            validate_controller_ref(model, "Layer.Alpha", layer.alpha_track, 1)?;
+            validate_controller_ref(model, "Layer.TextureID", layer.texture_id_track, 1)?;
+        }
+    }
+    for anim in &model.texture_anims {
+        validate_controller_ref(model, "TextureAnim.Translation", anim.translation.0, 3)?;
+        validate_controller_ref(model, "TextureAnim.Rotation", anim.rotation.0, 4)?;
+        validate_controller_ref(model, "TextureAnim.Scaling", anim.scaling.0, 3)?;
+    }
+    for anim in &model.geoset_anims {
+        validate_controller_ref(model, "GeosetAnim.Alpha", anim.alpha_track.0, 1)?;
+        validate_controller_ref(model, "GeosetAnim.Color", anim.color_track.0, 3)?;
+    }
+    for light in &model.lights {
+        validate_node(model, &light.node)?;
+        validate_controller_ref(
+            model,
+            "Light.AttenuationStart",
+            light.attenuation_start_track.0,
+            1,
+        )?;
+        validate_controller_ref(
+            model,
+            "Light.AttenuationEnd",
+            light.attenuation_end_track.0,
+            1,
+        )?;
+        validate_controller_ref(model, "Light.Intensity", light.intensity_track.0, 1)?;
+        validate_controller_ref(model, "Light.Color", light.color_track.0, 3)?;
+        validate_controller_ref(model, "Light.AmbColor", light.ambient_color_track.0, 3)?;
+        validate_controller_ref(
+            model,
+            "Light.AmbIntensity",
+            light.ambient_intensity_track.0,
+            1,
+        )?;
+    }
+    for attachment in &model.attachments {
+        validate_node(model, &attachment.node)?;
+    }
+    for emitter in &model.particle_emitters {
+        validate_node(model, &emitter.node)?;
+    }
+    for emitter in &model.particle_emitters_2 {
+        validate_node(model, &emitter.node)?;
+    }
+    for ribbon in &model.ribbons {
+        validate_node(model, &ribbon.node)?;
+    }
+    for camera in &model.cameras {
+        validate_controller_ref(
+            model,
+            "Camera.TargetTranslation",
+            camera.target_translation.0,
+            3,
+        )?;
+        validate_controller_ref(model, "Camera.Rotation", camera.rotation.0, 1)?;
+        validate_controller_ref(model, "Camera.Translation", camera.translation.0, 3)?;
+    }
+    for event in &model.events {
+        validate_node(model, &event.node)?;
+    }
+    for collision in &model.collisions {
+        validate_node(model, &collision.node)?;
+    }
+    for chunk in &model.unknown_chunks {
+        u32::try_from(chunk.data.len()).map_err(|_| {
+            MdlError::new("mdx-chunk-too-large")
+                .with_arg("fourcc", chunk.fourcc_str())
+                .with_arg("size", chunk.data.len())
+        })?;
+    }
+    Ok(())
+}
+
+fn validate_node(model: &Model, node: &NodeRef) -> Result<(), MdlError> {
+    validate_controller_ref(model, "Node.Translation", node.translation.0, 3)?;
+    validate_controller_ref(model, "Node.Rotation", node.rotation.0, 4)?;
+    validate_controller_ref(model, "Node.Scaling", node.scaling.0, 3)?;
+    validate_controller_ref(model, "Node.Visibility", node.visibility.0, 1)
+}
+
+fn validate_controller_ref(
+    model: &Model,
+    track: &'static str,
+    idx: i32,
+    elements: usize,
+) -> Result<(), MdlError> {
+    if idx < 0 {
+        return Ok(());
+    }
+    let controller = model.controllers.get(idx as usize).ok_or_else(|| {
+        MdlError::new("mdx-invalid-controller-index")
+            .with_arg("track", track)
+            .with_arg("index", idx)
+            .with_arg("count", model.controllers.len())
+    })?;
+    if controller.global_seq_id >= 0
+        && controller.global_seq_id as usize >= model.global_sequences.len()
+    {
+        return Err(MdlError::new("mdx-invalid-global-sequence-index")
+            .with_arg("track", track)
+            .with_arg("index", controller.global_seq_id)
+            .with_arg("count", model.global_sequences.len()));
+    }
+    let with_tangents = controller.interpolation_type == 2 || controller.interpolation_type == 3;
+    for keyframe in &controller.keyframes {
+        if keyframe.data.len() != elements {
+            return Err(MdlError::new("mdx-invalid-track-width")
+                .with_arg("track", track)
+                .with_arg("frame", keyframe.frame)
+                .with_arg("expected", elements)
+                .with_arg("actual", keyframe.data.len()));
+        }
+        if with_tangents
+            && (keyframe.in_tan.len() != elements || keyframe.out_tan.len() != elements)
+        {
+            return Err(MdlError::new("mdx-invalid-tangent-width")
+                .with_arg("track", track)
+                .with_arg("frame", keyframe.frame)
+                .with_arg("expected", elements)
+                .with_arg("in_tan", keyframe.in_tan.len())
+                .with_arg("out_tan", keyframe.out_tan.len()));
+        }
+    }
+    Ok(())
+}
+
+fn write_modl(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     write_chunk(file, b"MODL", |out| {
         write_padded(out, &model.name, 0x150)?;
         out.write_u32::<LittleEndian>(0)?;
@@ -225,7 +388,7 @@ fn write_modl(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_sequences(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_sequences(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.sequences.is_empty() {
         return Ok(());
     }
@@ -249,7 +412,7 @@ fn write_sequences(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_global_sequences(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_global_sequences(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.global_sequences.is_empty() {
         return Ok(());
     }
@@ -273,7 +436,7 @@ fn filter_to_u32(mode: &FilterMode) -> u32 {
     }
 }
 
-fn write_materials(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_materials(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.materials.is_empty() {
         return Ok(());
     }
@@ -321,7 +484,7 @@ fn write_materials(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_textures(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_textures(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.textures.is_empty() {
         return Ok(());
     }
@@ -336,7 +499,7 @@ fn write_textures(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_texture_anims(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_texture_anims(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.texture_anims.is_empty() {
         return Ok(());
     }
@@ -348,7 +511,11 @@ fn write_texture_anims(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_tex_anim(file: &mut File, model: &Model, anim: &TextureAnim) -> Result<(), MdlError> {
+fn write_tex_anim(
+    file: &mut dyn WriteSeek,
+    model: &Model,
+    anim: &TextureAnim,
+) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
         write_controller(out, model, TAG_KTAT, anim.translation.0, false)?;
         write_controller(out, model, TAG_KTAR, anim.rotation.0, false)?;
@@ -357,7 +524,7 @@ fn write_tex_anim(file: &mut File, model: &Model, anim: &TextureAnim) -> Result<
     })
 }
 
-fn write_geosets(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_geosets(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.geosets.is_empty() {
         return Ok(());
     }
@@ -442,7 +609,7 @@ fn write_geosets(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_geoset_anims(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_geoset_anims(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.geoset_anims.is_empty() {
         return Ok(());
     }
@@ -454,7 +621,11 @@ fn write_geoset_anims(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_geoset_anim(file: &mut File, model: &Model, anim: &GeosetAnim) -> Result<(), MdlError> {
+fn write_geoset_anim(
+    file: &mut dyn WriteSeek,
+    model: &Model,
+    anim: &GeosetAnim,
+) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
         out.write_f32::<LittleEndian>(anim.alpha)?;
         let mut flags = 0u32;
@@ -471,7 +642,7 @@ fn write_geoset_anim(file: &mut File, model: &Model, anim: &GeosetAnim) -> Resul
     })
 }
 
-fn write_bones(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_bones(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.bones.is_empty() {
         return Ok(());
     }
@@ -485,7 +656,7 @@ fn write_bones(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_helpers(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_helpers(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.helpers.is_empty() {
         return Ok(());
     }
@@ -497,7 +668,7 @@ fn write_helpers(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_lights(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_lights(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.lights.is_empty() {
         return Ok(());
     }
@@ -509,7 +680,7 @@ fn write_lights(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_light(file: &mut File, model: &Model, light: &Light) -> Result<(), MdlError> {
+fn write_light(file: &mut dyn WriteSeek, model: &Model, light: &Light) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
         let mut node = light.node.clone();
         node.flags = crate::model::node::NodeFlags::from_bits(node.flags.bits() | TYPE_LITE);
@@ -532,7 +703,7 @@ fn write_light(file: &mut File, model: &Model, light: &Light) -> Result<(), MdlE
     })
 }
 
-fn write_attachments(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_attachments(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.attachments.is_empty() {
         return Ok(());
     }
@@ -545,7 +716,7 @@ fn write_attachments(file: &mut File, model: &Model) -> Result<(), MdlError> {
 }
 
 fn write_attachment(
-    file: &mut File,
+    file: &mut dyn WriteSeek,
     model: &Model,
     attachment: &Attachment,
 ) -> Result<(), MdlError> {
@@ -561,7 +732,7 @@ fn write_attachment(
     })
 }
 
-fn write_pivots(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_pivots(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.pivot_points.is_empty() {
         return Ok(());
     }
@@ -573,7 +744,7 @@ fn write_pivots(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_particle_emitters(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_particle_emitters(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.particle_emitters.is_empty() {
         return Ok(());
     }
@@ -586,7 +757,7 @@ fn write_particle_emitters(file: &mut File, model: &Model) -> Result<(), MdlErro
 }
 
 fn write_particle_emitter(
-    file: &mut File,
+    file: &mut dyn WriteSeek,
     model: &Model,
     emitter: &ParticleEmitter,
 ) -> Result<(), MdlError> {
@@ -605,7 +776,7 @@ fn write_particle_emitter(
     })
 }
 
-fn write_particle_emitters_2(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_particle_emitters_2(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.particle_emitters_2.is_empty() {
         return Ok(());
     }
@@ -618,7 +789,7 @@ fn write_particle_emitters_2(file: &mut File, model: &Model) -> Result<(), MdlEr
 }
 
 fn write_particle_emitter_2(
-    file: &mut File,
+    file: &mut dyn WriteSeek,
     model: &Model,
     emitter: &ParticleEmitter2,
 ) -> Result<(), MdlError> {
@@ -661,7 +832,7 @@ fn write_particle_emitter_2(
     })
 }
 
-fn write_ribbons(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_ribbons(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.ribbons.is_empty() {
         return Ok(());
     }
@@ -673,7 +844,11 @@ fn write_ribbons(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_ribbon(file: &mut File, model: &Model, ribbon: &RibbonEmitter) -> Result<(), MdlError> {
+fn write_ribbon(
+    file: &mut dyn WriteSeek,
+    model: &Model,
+    ribbon: &RibbonEmitter,
+) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
         write_node(out, model, &ribbon.node)?;
         out.write_f32::<LittleEndian>(ribbon.height_above)?;
@@ -692,7 +867,7 @@ fn write_ribbon(file: &mut File, model: &Model, ribbon: &RibbonEmitter) -> Resul
     })
 }
 
-fn write_cameras(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_cameras(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.cameras.is_empty() {
         return Ok(());
     }
@@ -704,7 +879,7 @@ fn write_cameras(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_camera(file: &mut File, model: &Model, camera: &Camera) -> Result<(), MdlError> {
+fn write_camera(file: &mut dyn WriteSeek, model: &Model, camera: &Camera) -> Result<(), MdlError> {
     write_inclusive(file, |out| {
         write_padded(out, &camera.name, 0x50)?;
         write_vec3(out, camera.position)?;
@@ -719,7 +894,7 @@ fn write_camera(file: &mut File, model: &Model, camera: &Camera) -> Result<(), M
     })
 }
 
-fn write_events(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_events(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.events.is_empty() {
         return Ok(());
     }
@@ -731,7 +906,11 @@ fn write_events(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_event(file: &mut File, model: &Model, event: &EventObject) -> Result<(), MdlError> {
+fn write_event(
+    file: &mut dyn WriteSeek,
+    model: &Model,
+    event: &EventObject,
+) -> Result<(), MdlError> {
     let mut node = event.node.clone();
     node.flags = crate::model::node::NodeFlags::from_bits(node.flags.bits() | TYPE_EVTS);
     write_node(file, model, &node)?;
@@ -744,7 +923,7 @@ fn write_event(file: &mut File, model: &Model, event: &EventObject) -> Result<()
     Ok(())
 }
 
-fn write_collisions(file: &mut File, model: &Model) -> Result<(), MdlError> {
+fn write_collisions(file: &mut dyn WriteSeek, model: &Model) -> Result<(), MdlError> {
     if model.collisions.is_empty() {
         return Ok(());
     }
@@ -756,7 +935,11 @@ fn write_collisions(file: &mut File, model: &Model) -> Result<(), MdlError> {
     })
 }
 
-fn write_collision(file: &mut File, model: &Model, shape: &CollisionShape) -> Result<(), MdlError> {
+fn write_collision(
+    file: &mut dyn WriteSeek,
+    model: &Model,
+    shape: &CollisionShape,
+) -> Result<(), MdlError> {
     let mut node = shape.node.clone();
     node.flags = crate::model::node::NodeFlags::from_bits(node.flags.bits() | TYPE_CLID);
     write_node(file, model, &node)?;
@@ -776,4 +959,162 @@ fn write_collision(file: &mut File, model: &Model, shape: &CollisionShape) -> Re
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::chunk::UnknownChunk;
+    use crate::model::ids::TrackId;
+    use crate::model::objects::{GlobalSequence, TextureAnim};
+    use crate::model::skeleton::Keyframe;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn keyframe(data: Vec<f32>) -> Keyframe {
+        Keyframe {
+            frame: 100,
+            data,
+            in_tan: Vec::new(),
+            out_tan: Vec::new(),
+        }
+    }
+
+    fn controller(global_seq_id: i32, data: Vec<f32>) -> AnimationController {
+        AnimationController {
+            interpolation_type: 1,
+            global_seq_id,
+            keyframes: vec![keyframe(data)],
+        }
+    }
+
+    fn model_with_translation(controller: AnimationController) -> Model {
+        let mut model = Model {
+            name: "MDX writer regression".to_string(),
+            controllers: vec![controller],
+            ..Model::default()
+        };
+        model.texture_anims.push(TextureAnim {
+            translation: TrackId(0),
+            rotation: TrackId::NONE,
+            scaling: TrackId::NONE,
+        });
+        model
+    }
+
+    fn temp_path(label: &str) -> std::path::PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "mdlvis-rs-mdx-writer-{label}-{}-{stamp}.mdx",
+            std::process::id()
+        ))
+    }
+
+    fn round_trip(model: &Model) -> Model {
+        let path = temp_path("round-trip");
+        save_path(&path, model).expect("write MDX");
+        let mut file = File::open(&path).expect("open written MDX");
+        let loaded = crate::parser::load::load(&mut file).expect("reload written MDX");
+        fs::remove_file(path).expect("remove temporary MDX");
+        loaded
+    }
+
+    #[test]
+    fn controller_global_sequence_ids_survive_full_model_round_trip() {
+        let mut model = model_with_translation(controller(-1, vec![1.0, 2.0, 3.0]));
+        model
+            .global_sequences
+            .push(GlobalSequence { duration: 1_000 });
+        model.controllers.push(controller(0, vec![4.0, 5.0, 6.0]));
+        model.texture_anims.push(TextureAnim {
+            translation: TrackId(1),
+            rotation: TrackId::NONE,
+            scaling: TrackId::NONE,
+        });
+        model
+            .unknown_chunks
+            .push(UnknownChunk::new(*b"ZZZZ", vec![1, 2, 3, 4]));
+
+        let first_loaded = round_trip(&model);
+        let loaded = round_trip(&first_loaded);
+        assert_eq!(first_loaded.controllers[0].global_seq_id, -1);
+        assert_eq!(first_loaded.controllers[1].global_seq_id, 0);
+        assert_eq!(
+            serde_json::to_value(&loaded).expect("serialize loaded Model"),
+            serde_json::to_value(&first_loaded).expect("serialize original loaded Model")
+        );
+    }
+
+    #[test]
+    #[ignore = "G1 diagnostic: PRE2 controllers are loaded but not retained as writable references"]
+    fn tracked_model_exposes_orphan_controller_loss() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test-data")
+            .join("Nether Blast/Nether Blast I.mdx");
+        let mut file = File::open(path).expect("open tracked VERS 800 sample");
+        let original = crate::parser::load::load(&mut file).expect("load tracked sample");
+        let reloaded = round_trip(&original);
+
+        assert_eq!(original.controllers.len(), 20);
+        assert_eq!(reloaded.controllers.len(), 11);
+        assert_ne!(
+            serde_json::to_value(&reloaded).expect("serialize reloaded Model"),
+            serde_json::to_value(&original).expect("serialize original Model")
+        );
+    }
+
+    #[test]
+    fn invalid_controller_index_is_rejected() {
+        let mut model = Model::default();
+        model.texture_anims.push(TextureAnim {
+            translation: TrackId(999),
+            rotation: TrackId::NONE,
+            scaling: TrackId::NONE,
+        });
+
+        let err = serialize(&model).expect_err("out-of-range controller must fail");
+        assert_eq!(err.key, "mdx-invalid-controller-index");
+    }
+
+    #[test]
+    fn save_path_does_not_touch_targets_when_validation_fails() {
+        let mut model = Model::default();
+        model.texture_anims.push(TextureAnim {
+            translation: TrackId(999),
+            rotation: TrackId::NONE,
+            scaling: TrackId::NONE,
+        });
+        let existing = temp_path("existing");
+        let missing = temp_path("missing");
+        fs::write(&existing, b"keep me").expect("create existing target");
+        let _ = fs::remove_file(&missing);
+
+        assert!(save_path(&existing, &model).is_err());
+        assert_eq!(
+            fs::read(&existing).expect("read existing target"),
+            b"keep me"
+        );
+        assert!(save_path(&missing, &model).is_err());
+        assert!(!missing.exists());
+
+        fs::remove_file(existing).expect("remove existing target");
+    }
+
+    #[test]
+    fn invalid_controller_data_and_tangent_widths_are_rejected() {
+        let data_error = model_with_translation(controller(-1, vec![1.0, 2.0]));
+        let err = serialize(&data_error).expect_err("short translation data must fail");
+        assert_eq!(err.key, "mdx-invalid-track-width");
+
+        let mut tangent_controller = controller(-1, vec![1.0, 2.0, 3.0]);
+        tangent_controller.interpolation_type = 2;
+        tangent_controller.keyframes[0].in_tan = vec![0.0, 0.0];
+        tangent_controller.keyframes[0].out_tan = vec![0.0, 0.0, 0.0];
+        let tangent_error = model_with_translation(tangent_controller);
+        let err = serialize(&tangent_error).expect_err("short translation tangent must fail");
+        assert_eq!(err.key, "mdx-invalid-tangent-width");
+    }
 }
