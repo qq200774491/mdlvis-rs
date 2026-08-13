@@ -13,6 +13,7 @@ use crate::model::model::Model;
 pub use system::AnimationSystem;
 
 /// Evaluate one deterministic, CPU-only model pose from explicit frame inputs.
+#[allow(dead_code)]
 pub fn evaluate_pose(model: &Model, frame: types::FrameContext) -> Result<types::Pose, MdlError> {
     let resolved = types::resolve_frame(model, frame)?;
     let nodes = skeleton::evaluate_nodes(model, &resolved)?;
@@ -96,23 +97,25 @@ mod pose_integration_tests {
             "animation-invalid-frame-time"
         );
 
-        let mut duplicate = Model::default();
-        duplicate.attachments = vec![
-            Attachment {
-                node: NodeRef {
-                    object_id: ObjectId(3),
-                    ..NodeRef::default()
+        let duplicate = Model {
+            attachments: vec![
+                Attachment {
+                    node: NodeRef {
+                        object_id: ObjectId(3),
+                        ..NodeRef::default()
+                    },
+                    ..Attachment::default()
                 },
-                ..Attachment::default()
-            },
-            Attachment {
-                node: NodeRef {
-                    object_id: ObjectId(3),
-                    ..NodeRef::default()
+                Attachment {
+                    node: NodeRef {
+                        object_id: ObjectId(3),
+                        ..NodeRef::default()
+                    },
+                    ..Attachment::default()
                 },
-                ..Attachment::default()
-            },
-        ];
+            ],
+            ..Model::default()
+        };
         assert_eq!(
             evaluate_pose(&duplicate, context())
                 .expect_err("duplicate ObjectID must fail")
