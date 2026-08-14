@@ -54,7 +54,41 @@ mod integration_tests {
     use crate::model::ids::TextureIndex;
     use crate::scene::SceneTextureRequest;
     use std::collections::BTreeMap;
+    use std::ffi::OsString;
     use std::sync::{Arc, Mutex};
+
+    static ARCHIVE_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct ArchiveEnvGuard {
+        saved: Vec<(&'static str, Option<OsString>)>,
+    }
+
+    impl ArchiveEnvGuard {
+        fn replace(values: &[(&'static str, Option<&str>)]) -> Self {
+            let saved = values
+                .iter()
+                .map(|(name, _)| (*name, std::env::var_os(name)))
+                .collect();
+            for (name, value) in values {
+                match value {
+                    Some(value) => unsafe { std::env::set_var(name, value) },
+                    None => unsafe { std::env::remove_var(name) },
+                }
+            }
+            Self { saved }
+        }
+    }
+
+    impl Drop for ArchiveEnvGuard {
+        fn drop(&mut self) {
+            for (name, value) in &self.saved {
+                match value {
+                    Some(value) => unsafe { std::env::set_var(name, value) },
+                    None => unsafe { std::env::remove_var(name) },
+                }
+            }
+        }
+    }
 
     fn tracked(relative: &str) -> crate::model::model::Model {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -319,7 +353,10 @@ mod integration_tests {
             TextureByteSource::read(&mut source, "missing.blp").unwrap(),
             Some(b"archive-only".to_vec())
         );
-        assert_eq!(TextureByteSource::read(&mut source, "absent.blp").unwrap(), None);
+        assert_eq!(
+            TextureByteSource::read(&mut source, "absent.blp").unwrap(),
+            None
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -333,7 +370,10 @@ mod integration_tests {
             archive: None,
             fatal_error: None,
         };
-        assert_eq!(TextureByteSource::read(&mut source, "absent.blp").unwrap(), None);
+        assert_eq!(
+            TextureByteSource::read(&mut source, "absent.blp").unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -363,9 +403,13 @@ mod integration_tests {
                 archive: Some(archive.clone()),
                 fatal_error: None,
             });
-            let scene =
-                prepare_model_cpu_scene(&model, tracked_frame(&model), &mut resolver, [1.0, 0.0, 0.0])
-                    .unwrap();
+            let scene = prepare_model_cpu_scene(
+                &model,
+                tracked_frame(&model),
+                &mut resolver,
+                [1.0, 0.0, 0.0],
+            )
+            .unwrap();
             for (request, texture) in scene.packet.textures.iter().zip(&scene.textures) {
                 if request.replaceable_id == 1 || request.replaceable_id == 2 {
                     continue;
@@ -398,22 +442,59 @@ mod integration_tests {
         };
         use crate::verification::dump_structure;
 
-        let Some(base) = std::env::var_os("MDLVIS_TEST_WAR3_MPQ").map(PathBuf::from) else {
-            return;
-        };
+        let base = std::env::var_os("MDLVIS_TEST_WAR3_MPQ")
+            .map(PathBuf::from)
+            .expect("set MDLVIS_TEST_WAR3_MPQ for the fixed G3 environment");
+        let code_sha = std::env::var("MDLVIS_G3_EVIDENCE_SHA")
+            .expect("set MDLVIS_G3_EVIDENCE_SHA to the exact commit under test");
         let archive = StormArchiveSource::open(&War3ArchivePaths {
             base,
             expansion: std::env::var_os("MDLVIS_TEST_WAR3X_MPQ").map(PathBuf::from),
             patch: std::env::var_os("MDLVIS_TEST_WAR3PATCH_MPQ").map(PathBuf::from),
         })
         .expect("configured MPQs open");
-        let out = std::env::temp_dir().join("mdlvis-g3-viewverify").join("12bc17e");
+        let out = std::env::temp_dir()
+            .join("mdlvis-g3-viewverify")
+            .join(&code_sha)
+            .join("rust");
         std::fs::create_dir_all(&out).unwrap();
 
-        for relative in [
-            "Nether Blast/Nether Blast I.mdx",
-            "Ember Forge  Ember Knight/Ember Forge_opt2.mdx",
-        ] {
+        let samples = [
+            ("nether", "Nether Blast/Nether Blast I.mdx", &[8266_u32][..]),
+            (
+                "ember",
+                "Ember Forge  Ember Knight/Ember Forge_opt2.mdx",
+                &[1000_u32, 3000_u32][..],
+            ),
+        ];
+        let views = [
+            (
+                "front",
+                [
+                    [0.0, -0.002784375, 0.0, 0.0],
+                    [0.0, 0.0, 0.00495, 0.0],
+                    [-0.00099, 0.0, 0.0, 0.5],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+                [0.0, -1.0, 0.0],
+                [-1.0, 0.0, 0.0],
+            ),
+            (
+                "back",
+                [
+                    [0.0, 0.002784375, 0.0, 0.0],
+                    [0.0, 0.0, 0.00495, 0.0],
+                    [0.00099, 0.0, 0.0, 0.5],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+                [0.0, 1.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ),
+        ];
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let mut records = Vec::new();
+
+        for (sample, relative, frames) in samples {
             let path = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("test-data")
                 .join(relative);
@@ -422,162 +503,186 @@ mod integration_tests {
             assert_eq!(first, second);
 
             let model = tracked(relative);
-            let mut frame = tracked_frame(&model);
-            if let Some(sequence) = model.sequences.first() {
-                frame.sequence_time =
-                    f64::from(sequence.start_frame + sequence.end_frame) * 0.5;
-            }
-            let pose_a = crate::animation::evaluate_pose(&model, frame).unwrap();
-            let pose_b = crate::animation::evaluate_pose(&model, frame).unwrap();
-            assert_eq!(pose_a.nodes.len(), pose_b.nodes.len());
-            for (left, right) in pose_a.nodes.iter().zip(&pose_b.nodes) {
-                assert_eq!(left.object_id, right.object_id);
-                assert_eq!(left.world, right.world);
-                assert_eq!(left.visible, right.visible);
-            }
-
-            let mut resolver = SceneTextureResolver::new(ViewerTextureSource {
-                local: ModelTextureSource::new(&path).unwrap(),
-                archive: Some(archive.clone()),
-                fatal_error: None,
-            });
-            let scene = prepare_model_cpu_scene(&model, frame, &mut resolver, [1.0, 0.0, 0.0])
-                .expect("cpu scene");
-            let missing = scene
-                .textures
-                .iter()
-                .filter(|texture| {
-                    matches!(
-                        texture.origin,
-                        crate::texture::scene::TextureOrigin::Fallback {
-                            reason: crate::texture::scene::TextureFallbackReason::Missing,
-                            ..
-                        }
-                    )
-                })
-                .count();
-            assert_eq!(missing, 0, "{relative} still has Missing fallbacks");
-
-            let (min, max) = scene.packet.meshes.iter().fold(
-                ([f32::MAX; 3], [f32::MIN; 3]),
-                |(min, max), mesh| {
-                    (
-                        [
-                            min[0].min(mesh.bounds.min[0]),
-                            min[1].min(mesh.bounds.min[1]),
-                            min[2].min(mesh.bounds.min[2]),
-                        ],
-                        [
-                            max[0].max(mesh.bounds.max[0]),
-                            max[1].max(mesh.bounds.max[1]),
-                            max[2].max(mesh.bounds.max[2]),
-                        ],
-                    )
-                },
-            );
-            let target = [
-                (min[0] + max[0]) * 0.5,
-                (min[1] + max[1]) * 0.5,
-                (min[2] + max[2]) * 0.5,
-            ];
-            let extent = ((max[0] - min[0]).hypot(max[1] - min[1]).hypot(max[2] - min[2]))
-                .max(8.0);
-            let camera = CameraState::new(0.0, 0.3, extent * 1.6, target);
-            let eye = [
-                camera.target[0] + camera.distance * camera.yaw.cos() * camera.pitch.cos(),
-                camera.target[1] + camera.distance * camera.yaw.sin() * camera.pitch.cos(),
-                camera.target[2] + camera.distance * camera.pitch.sin(),
-            ];
-            let view_proj = {
-                let aspect = 1280.0 / 720.0;
-                let far_plane = (camera.distance * 8.0).max(1000.0);
-                let proj = nalgebra_glm::perspective(aspect, 45.0_f32.to_radians(), 0.1, far_plane);
-                let eye_v = nalgebra_glm::vec3(eye[0], eye[1], eye[2]);
-                let center = nalgebra_glm::vec3(camera.target[0], camera.target[1], camera.target[2]);
-                let up = nalgebra_glm::vec3(0.0, 0.0, 1.0);
-                let view = nalgebra_glm::look_at(&eye_v, &center, &up);
-                let matrix: [[f32; 4]; 4] = (proj * view).into();
-                matrix
-            };
-            let options = OffscreenSceneOptions {
-                width: 1280,
-                height: 720,
-                view_proj,
-                eye,
-                forward: [
-                    camera.target[0] - eye[0],
-                    camera.target[1] - eye[1],
-                    camera.target[2] - eye[2],
-                ],
-                clear: [0.02, 0.02, 0.02, 1.0],
-            };
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            let first_frame = runtime
-                .block_on(render_scene_offscreen(
-                    OffscreenSceneInput {
-                        packet: &scene.packet,
-                        textures: &scene.textures,
-                    },
-                    options,
-                ))
-                .expect("first offscreen");
-            let second_frame = runtime
-                .block_on(render_scene_offscreen(
-                    OffscreenSceneInput {
-                        packet: &scene.packet,
-                        textures: &scene.textures,
-                    },
-                    options,
-                ))
-                .expect("second offscreen");
-            assert_eq!(first_frame.rgba, second_frame.rgba);
-            assert_eq!((first_frame.width, first_frame.height), (1280, 720));
-            assert_eq!(first_frame.adapter.backend, wgpu::Backend::Dx12);
-
-            let slug = relative.replace(['/', '\\', ' '], "_");
-            let stem = out.join(&slug);
-            write_bmp888(
-                stem.with_extension("bmp"),
-                first_frame.width,
-                first_frame.height,
-                &first_frame.rgba,
-            )
-            .unwrap();
             first
                 .to_pretty_json()
                 .unwrap()
-                .pipe_to_file(stem.with_extension("structure.json"));
-            let report = format!(
-                "{{\"sample\":\"{relative}\",\"adapter\":\"{}\",\"backend\":\"{:?}\",\"rgba_fnv1a64\":{},\"decoded\":{},\"fallback\":{}}}\n",
-                first_frame.adapter.name,
-                first_frame.adapter.backend,
-                fnv1a64(&first_frame.rgba),
-                scene
-                    .textures
-                    .iter()
-                    .filter(|texture| matches!(
-                        texture.origin,
-                        crate::texture::scene::TextureOrigin::Decoded { .. }
-                    ))
-                    .count(),
-                scene
-                    .textures
-                    .iter()
-                    .filter(|texture| matches!(
-                        texture.origin,
-                        crate::texture::scene::TextureOrigin::Fallback { .. }
-                    ))
-                    .count()
-            );
-            std::fs::write(stem.with_extension("capture.json"), report).unwrap();
-            eprintln!("G3 recapture wrote {}", stem.display());
+                .pipe_to_file(out.join(format!("{sample}.structure.json")));
+
+            for frame_number in frames {
+                for (view, row_major_view_proj, right, forward) in views {
+                    let frame = FrameContext {
+                        sequence: Some(0),
+                        sequence_time: f64::from(*frame_number),
+                        global_time: 0.0,
+                        playback: PlaybackMode::Clamp,
+                        view: Some(crate::animation::types::ViewFrame {
+                            position: [0.0; 3],
+                            right,
+                            up: [0.0, 0.0, 1.0],
+                            forward,
+                        }),
+                    };
+                    let pose_a = crate::animation::evaluate_pose(&model, frame).unwrap();
+                    let pose_b = crate::animation::evaluate_pose(&model, frame).unwrap();
+                    assert_eq!(pose_a.nodes, pose_b.nodes);
+
+                    let mut resolver = SceneTextureResolver::new(ViewerTextureSource {
+                        local: ModelTextureSource::new(&path).unwrap(),
+                        archive: Some(archive.clone()),
+                        fatal_error: None,
+                    });
+                    let scene =
+                        prepare_model_cpu_scene(&model, frame, &mut resolver, [1.0, 0.0, 0.0])
+                            .expect("cpu scene");
+                    let decoded = scene
+                        .textures
+                        .iter()
+                        .filter(|texture| {
+                            matches!(
+                                texture.origin,
+                                crate::texture::scene::TextureOrigin::Decoded { .. }
+                            )
+                        })
+                        .count();
+                    let fallback = scene
+                        .textures
+                        .iter()
+                        .filter(|texture| {
+                            matches!(
+                                texture.origin,
+                                crate::texture::scene::TextureOrigin::Fallback { .. }
+                            )
+                        })
+                        .count();
+                    assert_eq!(fallback, 0, "{relative} still has texture fallbacks");
+                    let draw_alpha = scene
+                        .packet
+                        .draws
+                        .iter()
+                        .map(|draw| {
+                            serde_json::json!({
+                                "source_ordinal": draw.source_ordinal,
+                                "geoset": draw.geoset.0,
+                                "layer": draw.layer,
+                                "geoset_alpha": draw.geoset_alpha,
+                                "layer_alpha": draw.layer_alpha,
+                                "combined_alpha": draw.geoset_alpha * draw.layer_alpha,
+                                "filter": format!("{:?}", draw.filter_mode),
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    let clear = srgb_to_linear(0.8);
+
+                    let options = OffscreenSceneOptions {
+                        width: 1280,
+                        height: 720,
+                        view_proj: wgpu_uniform_matrix(row_major_view_proj),
+                        eye: [0.0; 3],
+                        forward,
+                        clear: [clear, clear, clear, 1.0],
+                    };
+                    let mut rgba = None;
+                    let mut adapter = None;
+                    for repeat in 1..=2 {
+                        let rendered = runtime
+                            .block_on(render_scene_offscreen(
+                                OffscreenSceneInput {
+                                    packet: &scene.packet,
+                                    textures: &scene.textures,
+                                },
+                                options,
+                            ))
+                            .expect("offscreen render");
+                        assert_eq!((rendered.width, rendered.height), (1280, 720));
+                        assert_eq!(rendered.adapter.backend, wgpu::Backend::Dx12);
+                        if let Some(expected) = &rgba {
+                            assert_eq!(expected, &rendered.rgba);
+                        } else {
+                            rgba = Some(rendered.rgba.clone());
+                            adapter = Some(rendered.adapter.clone());
+                        }
+                        let stem =
+                            format!("{sample}-seq0-frame{frame_number}-{view}-r{repeat}-fullview");
+                        write_bmp888(
+                            out.join(format!("{stem}.bmp")),
+                            rendered.width,
+                            rendered.height,
+                            &rendered.rgba,
+                        )
+                        .unwrap();
+                    }
+
+                    let rgba = rgba.unwrap();
+                    let adapter = adapter.unwrap();
+                    records.push(serde_json::json!({
+                        "sample": sample,
+                        "model": relative,
+                        "sequence": 0,
+                        "frame": frame_number,
+                        "view": view,
+                        "repeats": 2,
+                        "width": 1280,
+                        "height": 720,
+                        "rgba_fnv1a64": fnv1a64(&rgba),
+                        "decoded": decoded,
+                        "fallback": fallback,
+                        "draw_alpha": draw_alpha,
+                        "adapter": adapter.name,
+                        "driver": adapter.driver,
+                        "driver_info": adapter.driver_info,
+                        "backend": format!("{:?}", adapter.backend),
+                    }));
+                    eprintln!("G3 recapture wrote {sample} frame {frame_number} {view}");
+                }
+            }
         }
+
+        let report = serde_json::json!({
+            "schema": "mdlvis-g3-rust-capture-v1",
+            "code_sha": code_sha,
+            "drawable": { "width": 1280, "height": 720 },
+            "clear_rgba8": [204, 204, 204, 255],
+            "clear_linear": [srgb_to_linear(0.8), srgb_to_linear(0.8), srgb_to_linear(0.8), 1.0],
+            "sequence": 0,
+            "playback": "clamp",
+            "global_time": 0,
+            "camera_contract": {
+                "front": {
+                    "cpu_sort_eye": [0.0, 0.0, 0.0],
+                    "cpu_sort_forward": [-1.0, 0.0, 0.0],
+                    "row_major_view_proj": views[0].1,
+                },
+                "back": {
+                    "cpu_sort_eye": [0.0, 0.0, 0.0],
+                    "cpu_sort_forward": [1.0, 0.0, 0.0],
+                    "row_major_view_proj": views[1].1,
+                },
+            },
+            "records": records,
+        });
+        std::fs::write(
+            out.join("capture.json"),
+            serde_json::to_vec_pretty(&report).unwrap(),
+        )
+        .unwrap();
     }
 
     fn fnv1a64(bytes: &[u8]) -> u64 {
         bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
             (hash ^ u64::from(*byte)).wrapping_mul(0x1000_0000_01b3)
         })
+    }
+
+    fn wgpu_uniform_matrix(row_major: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+        std::array::from_fn(|column| std::array::from_fn(|row| row_major[row][column]))
+    }
+
+    fn srgb_to_linear(value: f32) -> f32 {
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
     }
 
     trait WriteFile {
@@ -590,12 +695,7 @@ mod integration_tests {
         }
     }
 
-    fn write_bmp888(
-        path: PathBuf,
-        width: u32,
-        height: u32,
-        rgba: &[u8],
-    ) -> std::io::Result<()> {
+    fn write_bmp888(path: PathBuf, width: u32, height: u32, rgba: &[u8]) -> std::io::Result<()> {
         use std::io::Write;
         let row_stride = width * 3;
         let padding = (4 - (row_stride % 4)) % 4;
@@ -646,6 +746,44 @@ mod integration_tests {
         state.clock.global_frame = 123.0;
         state.clock = IntegrationClock::default();
         assert_eq!(state.clock.global_frame, 0.0);
+    }
+
+    #[test]
+    fn invalid_production_archive_configuration_preserves_active_generation() {
+        let _lock = ARCHIVE_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _environment = ArchiveEnvGuard::replace(&[
+            ("MDLVIS_WAR3_MPQ", Some("relative/war3.mpq")),
+            ("MDLVIS_WAR3X_MPQ", None),
+            ("MDLVIS_WAR3PATCH_MPQ", None),
+        ]);
+        let mut state = IntegrationState::default();
+        let active = state.begin_load();
+        state.publish_load(
+            active,
+            SceneTextureResolver::new(ViewerTextureSource {
+                local: ModelTextureSource {
+                    root: PathBuf::from("active-scene"),
+                    fatal_error: None,
+                },
+                archive: None,
+                fatal_error: None,
+            }),
+        );
+
+        let attempted = state.begin_load();
+        let model_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data/Nether Blast/Nether Blast I.mdx");
+        let error = match ViewerTextureSource::new(&model_path) {
+            Ok(_) => panic!("relative production archive path unexpectedly accepted"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error.key, "archive-path-not-absolute");
+        assert_ne!(attempted, active);
+        assert_eq!(state.active_generation, active);
+        assert!(state.textures.is_some());
     }
 
     #[test]

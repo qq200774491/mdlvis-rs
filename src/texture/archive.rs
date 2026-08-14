@@ -225,7 +225,10 @@ fn canonical_regular_file(path: &Path, label: &'static str) -> Result<PathBuf, M
 mod tests {
     use super::*;
     use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use wow_mpq::{ArchiveBuilder, ListfileOption};
+
+    static NEXT_TEMP_DIR: AtomicU64 = AtomicU64::new(0);
 
     fn write_archive(dir: &Path, name: &str, members: &[(&str, &[u8])]) -> PathBuf {
         let path = dir.join(name);
@@ -239,12 +242,13 @@ mod tests {
 
     fn temp_dir() -> PathBuf {
         let root = std::env::temp_dir().join(format!(
-            "mdlvis-archive-{}-{}",
+            "mdlvis-archive-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT_TEMP_DIR.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&root).unwrap();
         root
