@@ -2,6 +2,7 @@ use crate::error::MdlError;
 use crate::parser::load::load;
 use crate::renderer::camera::CameraState;
 use crate::scene::{ScenePacket, build_scene_packet};
+use crate::texture::archive::{StormArchiveSource, War3ArchivePaths};
 use crate::texture::loader::TextureLoadResult;
 use crate::texture::manager::TextureStatus;
 use crate::texture::scene::{
@@ -273,13 +274,80 @@ mod integration_tests {
     }
 
     #[test]
+    fn viewer_source_prefers_model_local_then_archive() {
+        use crate::texture::archive::{StormArchiveSource, War3ArchivePaths};
+        use wow_mpq::{ArchiveBuilder, ListfileOption};
+
+        let root = std::env::temp_dir().join(format!(
+            "mdlvis-archive-source-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("local.blp"), b"from-model").unwrap();
+        let mpq = root.join("base.mpq");
+        ArchiveBuilder::new()
+            .listfile_option(ListfileOption::None)
+            .add_file_data(b"from-archive".to_vec(), "local.blp")
+            .add_file_data(b"archive-only".to_vec(), "missing.blp")
+            .build(&mpq)
+            .unwrap();
+
+        let mut source = ViewerTextureSource {
+            local: ModelTextureSource {
+                root: root.canonicalize().unwrap(),
+                fatal_error: None,
+            },
+            archive: Some(
+                StormArchiveSource::open(&War3ArchivePaths {
+                    base: mpq,
+                    expansion: None,
+                    patch: None,
+                })
+                .unwrap(),
+            ),
+            fatal_error: None,
+        };
+        assert_eq!(
+            TextureByteSource::read(&mut source, "local.blp").unwrap(),
+            Some(b"from-model".to_vec())
+        );
+        assert_eq!(
+            TextureByteSource::read(&mut source, "missing.blp").unwrap(),
+            Some(b"archive-only".to_vec())
+        );
+        assert_eq!(TextureByteSource::read(&mut source, "absent.blp").unwrap(), None);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unconfigured_archive_keeps_existing_missing_fallback() {
+        let mut source = ViewerTextureSource {
+            local: ModelTextureSource {
+                root: Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf(),
+                fatal_error: None,
+            },
+            archive: None,
+            fatal_error: None,
+        };
+        assert_eq!(TextureByteSource::read(&mut source, "absent.blp").unwrap(), None);
+    }
+
+    #[test]
     fn failed_generation_does_not_replace_active_generation() {
         let mut state = IntegrationState::default();
         let first = state.begin_load();
         state.publish_load(
             first,
-            SceneTextureResolver::new(ModelTextureSource {
-                root: PathBuf::from("first"),
+            SceneTextureResolver::new(ViewerTextureSource {
+                local: ModelTextureSource {
+                    root: PathBuf::from("first"),
+                    fatal_error: None,
+                },
+                archive: None,
                 fatal_error: None,
             }),
         );
@@ -328,7 +396,7 @@ struct IntegrationState {
     load_generation: u64,
     active_generation: u64,
     clock: IntegrationClock,
-    textures: Option<SceneTextureResolver<ModelTextureSource>>,
+    textures: Option<SceneTextureResolver<ViewerTextureSource>>,
     time_origin: Instant,
 }
 
@@ -358,7 +426,7 @@ impl IntegrationState {
     fn publish_load(
         &mut self,
         generation: u64,
-        resolver: SceneTextureResolver<ModelTextureSource>,
+        resolver: SceneTextureResolver<ViewerTextureSource>,
     ) {
         self.active_generation = generation;
         self.textures = Some(resolver);
@@ -556,10 +624,93 @@ impl TextureByteSource for ModelTextureSource {
     }
 }
 
+#[derive(Clone)]
+struct ViewerTextureSource {
+    local: ModelTextureSource,
+    archive: Option<StormArchiveSource>,
+    fatal_error: Option<MdlError>,
+}
+
+impl ViewerTextureSource {
+    fn new(model_path: &Path) -> Result<Self, MdlError> {
+        Ok(Self {
+            local: ModelTextureSource::new(model_path)?,
+            archive: configured_archive_source()?,
+            fatal_error: None,
+        })
+    }
+
+    fn preflight(&self, requests: &[crate::scene::SceneTextureRequest]) -> Result<(), MdlError> {
+        self.local.preflight(requests)
+    }
+}
+
+impl TextureByteSource for ViewerTextureSource {
+    fn read(&mut self, canonical_path: &str) -> Result<Option<Vec<u8>>, TextureSourceError> {
+        match self.local.read(canonical_path) {
+            Ok(Some(bytes)) => return Ok(Some(bytes)),
+            Ok(None) => {}
+            Err(error) => {
+                if let Some(fatal) = self.local.fatal_error.take() {
+                    self.fatal_error = Some(fatal);
+                }
+                return Err(error);
+            }
+        }
+
+        let Some(archive) = self.archive.as_mut() else {
+            return Ok(None);
+        };
+        match archive.read(canonical_path) {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                if let Some(fatal) = archive.take_fatal_error() {
+                    self.fatal_error = Some(fatal);
+                }
+                Err(error)
+            }
+        }
+    }
+}
+
+fn configured_archive_source() -> Result<Option<StormArchiveSource>, MdlError> {
+    let Some(base) = configured_absolute_path("MDLVIS_WAR3_MPQ")? else {
+        if configured_absolute_path("MDLVIS_WAR3X_MPQ")?.is_some()
+            || configured_absolute_path("MDLVIS_WAR3PATCH_MPQ")?.is_some()
+        {
+            return Err(MdlError::new("archive-base-required")
+                .with_arg("hint", "set MDLVIS_WAR3_MPQ to an absolute war3.mpq path"));
+        }
+        return Ok(None);
+    };
+    StormArchiveSource::open(&War3ArchivePaths {
+        base,
+        expansion: configured_absolute_path("MDLVIS_WAR3X_MPQ")?,
+        patch: configured_absolute_path("MDLVIS_WAR3PATCH_MPQ")?,
+    })
+    .map(Some)
+}
+
+fn configured_absolute_path(name: &str) -> Result<Option<PathBuf>, MdlError> {
+    let Some(value) = std::env::var_os(name) else {
+        return Ok(None);
+    };
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let path = PathBuf::from(value);
+    if !path.is_absolute() {
+        return Err(MdlError::new("archive-path-not-absolute")
+            .with_arg("kind", name)
+            .with_arg("path", path.display()));
+    }
+    Ok(Some(path))
+}
+
 fn prepare_model_cpu_scene(
     model: &crate::model::model::Model,
     frame: crate::animation::types::FrameContext,
-    resolver: &mut SceneTextureResolver<ModelTextureSource>,
+    resolver: &mut SceneTextureResolver<ViewerTextureSource>,
     team_color: [f32; 3],
 ) -> Result<PreparedCpuScene, MdlError> {
     let pose = crate::animation::evaluate_pose(model, frame)?;
@@ -1082,7 +1233,7 @@ impl App {
         let mut file = File::open(path)?;
         let model = load(&mut file)?;
         let model_path = Path::new(path);
-        let mut resolver = SceneTextureResolver::new(ModelTextureSource::new(model_path)?);
+        let mut resolver = SceneTextureResolver::new(ViewerTextureSource::new(model_path)?);
         let initial_frame = crate::animation::types::FrameContext {
             sequence: None,
             sequence_time: 0.0,

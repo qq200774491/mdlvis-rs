@@ -1,3 +1,4 @@
+pub mod archive;
 pub mod loader;
 pub mod manager;
 pub mod panel;
