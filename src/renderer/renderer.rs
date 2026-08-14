@@ -944,14 +944,14 @@ fn upload_scene_gpu(
         device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Empty scene uniform buffer"),
             size: SCENE_UNIFORM_ALIGNMENT as u64,
-            usage: wgpu::BufferUsages::UNIFORM,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         })
     } else {
         device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Scene uniform buffer"),
             contents: uniform_bytes,
-            usage: wgpu::BufferUsages::UNIFORM,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         })
     };
     let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -3879,6 +3879,72 @@ mod scene_tests {
                 "missing shader contract: {required}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn gpu_scene_uniform_buffers_allow_refresh_writes() {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .expect("scene uniform validation requires an available adapter");
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("PIPE scene uniform refresh validation"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::MemoryUsage,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let scene_layout = scene_dynamic_material_layout(&device);
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
+
+        let scene = packet(
+            vec![mesh(0, [0.0; 3])],
+            vec![draw(0, 0, SceneFilterMode::None)],
+        );
+        let mut prepared = prepare_scene(&scene, view()).unwrap();
+        let gpu = upload_scene_gpu(&device, &prepared, &scene_layout).unwrap();
+        refresh_prepared_scene_view(
+            &mut prepared,
+            SceneView {
+                eye: [2.0, 3.0, 4.0],
+                forward: [-2.0, -3.0, -4.0],
+            },
+        )
+        .unwrap();
+        queue.write_buffer(
+            &gpu.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&prepared.uniforms),
+        );
+
+        let empty = prepare_scene(&packet(Vec::new(), Vec::new()), view()).unwrap();
+        let empty_gpu = upload_scene_gpu(&device, &empty, &scene_layout).unwrap();
+        queue.write_buffer(&empty_gpu.uniform_buffer, 0, &[]);
+        queue.write_buffer(
+            &empty_gpu.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&SceneDrawUniform::zeroed()),
+        );
+
+        let submission = queue.submit(std::iter::empty());
+        device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(submission),
+                timeout: Some(std::time::Duration::from_secs(10)),
+            })
+            .unwrap();
+        assert!(
+            device.pop_error_scope().await.is_none(),
+            "wgpu validation rejected a Scene uniform refresh write"
+        );
     }
 
     #[tokio::test]
