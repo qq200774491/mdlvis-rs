@@ -391,6 +391,242 @@ mod integration_tests {
     }
 
     #[test]
+    #[ignore = "writes G3 recapture evidence to %TEMP%; requires local Warcraft III MPQs and DX12"]
+    fn g3_viewverify_recapture_tracked_models_with_configured_mpqs() {
+        use crate::renderer::renderer::{
+            OffscreenSceneInput, OffscreenSceneOptions, render_scene_offscreen,
+        };
+        use crate::verification::dump_structure;
+
+        let Some(base) = std::env::var_os("MDLVIS_TEST_WAR3_MPQ").map(PathBuf::from) else {
+            return;
+        };
+        let archive = StormArchiveSource::open(&War3ArchivePaths {
+            base,
+            expansion: std::env::var_os("MDLVIS_TEST_WAR3X_MPQ").map(PathBuf::from),
+            patch: std::env::var_os("MDLVIS_TEST_WAR3PATCH_MPQ").map(PathBuf::from),
+        })
+        .expect("configured MPQs open");
+        let out = std::env::temp_dir().join("mdlvis-g3-viewverify").join("12bc17e");
+        std::fs::create_dir_all(&out).unwrap();
+
+        for relative in [
+            "Nether Blast/Nether Blast I.mdx",
+            "Ember Forge  Ember Knight/Ember Forge_opt2.mdx",
+        ] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("test-data")
+                .join(relative);
+            let first = dump_structure(&path).expect("structure dump");
+            let second = dump_structure(&path).expect("repeat structure dump");
+            assert_eq!(first, second);
+
+            let model = tracked(relative);
+            let mut frame = tracked_frame(&model);
+            if let Some(sequence) = model.sequences.first() {
+                frame.sequence_time =
+                    f64::from(sequence.start_frame + sequence.end_frame) * 0.5;
+            }
+            let pose_a = crate::animation::evaluate_pose(&model, frame).unwrap();
+            let pose_b = crate::animation::evaluate_pose(&model, frame).unwrap();
+            assert_eq!(pose_a.nodes.len(), pose_b.nodes.len());
+            for (left, right) in pose_a.nodes.iter().zip(&pose_b.nodes) {
+                assert_eq!(left.object_id, right.object_id);
+                assert_eq!(left.world, right.world);
+                assert_eq!(left.visible, right.visible);
+            }
+
+            let mut resolver = SceneTextureResolver::new(ViewerTextureSource {
+                local: ModelTextureSource::new(&path).unwrap(),
+                archive: Some(archive.clone()),
+                fatal_error: None,
+            });
+            let scene = prepare_model_cpu_scene(&model, frame, &mut resolver, [1.0, 0.0, 0.0])
+                .expect("cpu scene");
+            let missing = scene
+                .textures
+                .iter()
+                .filter(|texture| {
+                    matches!(
+                        texture.origin,
+                        crate::texture::scene::TextureOrigin::Fallback {
+                            reason: crate::texture::scene::TextureFallbackReason::Missing,
+                            ..
+                        }
+                    )
+                })
+                .count();
+            assert_eq!(missing, 0, "{relative} still has Missing fallbacks");
+
+            let (min, max) = scene.packet.meshes.iter().fold(
+                ([f32::MAX; 3], [f32::MIN; 3]),
+                |(min, max), mesh| {
+                    (
+                        [
+                            min[0].min(mesh.bounds.min[0]),
+                            min[1].min(mesh.bounds.min[1]),
+                            min[2].min(mesh.bounds.min[2]),
+                        ],
+                        [
+                            max[0].max(mesh.bounds.max[0]),
+                            max[1].max(mesh.bounds.max[1]),
+                            max[2].max(mesh.bounds.max[2]),
+                        ],
+                    )
+                },
+            );
+            let target = [
+                (min[0] + max[0]) * 0.5,
+                (min[1] + max[1]) * 0.5,
+                (min[2] + max[2]) * 0.5,
+            ];
+            let extent = ((max[0] - min[0]).hypot(max[1] - min[1]).hypot(max[2] - min[2]))
+                .max(8.0);
+            let camera = CameraState::new(0.0, 0.3, extent * 1.6, target);
+            let eye = [
+                camera.target[0] + camera.distance * camera.yaw.cos() * camera.pitch.cos(),
+                camera.target[1] + camera.distance * camera.yaw.sin() * camera.pitch.cos(),
+                camera.target[2] + camera.distance * camera.pitch.sin(),
+            ];
+            let view_proj = {
+                let aspect = 1280.0 / 720.0;
+                let far_plane = (camera.distance * 8.0).max(1000.0);
+                let proj = nalgebra_glm::perspective(aspect, 45.0_f32.to_radians(), 0.1, far_plane);
+                let eye_v = nalgebra_glm::vec3(eye[0], eye[1], eye[2]);
+                let center = nalgebra_glm::vec3(camera.target[0], camera.target[1], camera.target[2]);
+                let up = nalgebra_glm::vec3(0.0, 0.0, 1.0);
+                let view = nalgebra_glm::look_at(&eye_v, &center, &up);
+                let matrix: [[f32; 4]; 4] = (proj * view).into();
+                matrix
+            };
+            let options = OffscreenSceneOptions {
+                width: 1280,
+                height: 720,
+                view_proj,
+                eye,
+                forward: [
+                    camera.target[0] - eye[0],
+                    camera.target[1] - eye[1],
+                    camera.target[2] - eye[2],
+                ],
+                clear: [0.02, 0.02, 0.02, 1.0],
+            };
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            let first_frame = runtime
+                .block_on(render_scene_offscreen(
+                    OffscreenSceneInput {
+                        packet: &scene.packet,
+                        textures: &scene.textures,
+                    },
+                    options,
+                ))
+                .expect("first offscreen");
+            let second_frame = runtime
+                .block_on(render_scene_offscreen(
+                    OffscreenSceneInput {
+                        packet: &scene.packet,
+                        textures: &scene.textures,
+                    },
+                    options,
+                ))
+                .expect("second offscreen");
+            assert_eq!(first_frame.rgba, second_frame.rgba);
+            assert_eq!((first_frame.width, first_frame.height), (1280, 720));
+            assert_eq!(first_frame.adapter.backend, wgpu::Backend::Dx12);
+
+            let slug = relative.replace(['/', '\\', ' '], "_");
+            let stem = out.join(&slug);
+            write_bmp888(
+                stem.with_extension("bmp"),
+                first_frame.width,
+                first_frame.height,
+                &first_frame.rgba,
+            )
+            .unwrap();
+            first
+                .to_pretty_json()
+                .unwrap()
+                .pipe_to_file(stem.with_extension("structure.json"));
+            let report = format!(
+                "{{\"sample\":\"{relative}\",\"adapter\":\"{}\",\"backend\":\"{:?}\",\"rgba_fnv1a64\":{},\"decoded\":{},\"fallback\":{}}}\n",
+                first_frame.adapter.name,
+                first_frame.adapter.backend,
+                fnv1a64(&first_frame.rgba),
+                scene
+                    .textures
+                    .iter()
+                    .filter(|texture| matches!(
+                        texture.origin,
+                        crate::texture::scene::TextureOrigin::Decoded { .. }
+                    ))
+                    .count(),
+                scene
+                    .textures
+                    .iter()
+                    .filter(|texture| matches!(
+                        texture.origin,
+                        crate::texture::scene::TextureOrigin::Fallback { .. }
+                    ))
+                    .count()
+            );
+            std::fs::write(stem.with_extension("capture.json"), report).unwrap();
+            eprintln!("G3 recapture wrote {}", stem.display());
+        }
+    }
+
+    fn fnv1a64(bytes: &[u8]) -> u64 {
+        bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x1000_0000_01b3)
+        })
+    }
+
+    trait WriteFile {
+        fn pipe_to_file(self, path: PathBuf);
+    }
+
+    impl WriteFile for String {
+        fn pipe_to_file(self, path: PathBuf) {
+            std::fs::write(path, self).unwrap();
+        }
+    }
+
+    fn write_bmp888(
+        path: PathBuf,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) -> std::io::Result<()> {
+        use std::io::Write;
+        let row_stride = width * 3;
+        let padding = (4 - (row_stride % 4)) % 4;
+        let pixel_size = (row_stride + padding) * height;
+        let file_size = 54 + pixel_size;
+        let mut file = File::create(path)?;
+        file.write_all(b"BM")?;
+        file.write_all(&file_size.to_le_bytes())?;
+        file.write_all(&0u32.to_le_bytes())?;
+        file.write_all(&54u32.to_le_bytes())?;
+        file.write_all(&40u32.to_le_bytes())?;
+        file.write_all(&width.to_le_bytes())?;
+        file.write_all(&height.to_le_bytes())?;
+        file.write_all(&1u16.to_le_bytes())?;
+        file.write_all(&24u16.to_le_bytes())?;
+        file.write_all(&0u32.to_le_bytes())?;
+        file.write_all(&pixel_size.to_le_bytes())?;
+        file.write_all(&[0u8; 16])?;
+        let pad = [0u8; 3];
+        for y in (0..height).rev() {
+            let row = (y * width * 4) as usize;
+            for x in 0..width {
+                let i = row + (x * 4) as usize;
+                file.write_all(&[rgba[i + 2], rgba[i + 1], rgba[i]])?;
+            }
+            file.write_all(&pad[..padding as usize])?;
+        }
+        Ok(())
+    }
+
+    #[test]
     fn failed_generation_does_not_replace_active_generation() {
         let mut state = IntegrationState::default();
         let first = state.begin_load();
