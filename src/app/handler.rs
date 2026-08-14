@@ -123,7 +123,7 @@ impl ApplicationHandler for AppHandler {
         }
 
         if self.app.is_none() {
-            self.app = Some(App {});
+            self.app = Some(App::new());
         }
     }
 
@@ -151,6 +151,7 @@ impl ApplicationHandler for AppHandler {
             // Check if there's a pending model to load
             if let Some(path) = self.pending_model_path.take() {
                 if let Err(e) = self.runtime.block_on(app.load_model(&path)) {
+                    app.record_load_error(e.clone());
                     eprintln!(
                         "{}",
                         crate::i18n::t_args(
@@ -165,6 +166,10 @@ impl ApplicationHandler for AppHandler {
             }
 
             if let Err(e) = app.render() {
+                app.record_scene_error(
+                    crate::error::MdlError::new("scene-surface-error")
+                        .with_arg("reason", format!("{e:?}")),
+                );
                 eprintln!(
                     "{}",
                     crate::i18n::t_args("error.render", [("error", format!("{e:?}").into())])
