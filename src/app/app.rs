@@ -337,6 +337,60 @@ mod integration_tests {
     }
 
     #[test]
+    #[ignore = "requires explicitly configured local Warcraft III MPQs"]
+    fn configured_archives_decode_tracked_model_blps_without_missing_fallback() {
+        let Some(base) = std::env::var_os("MDLVIS_TEST_WAR3_MPQ").map(PathBuf::from) else {
+            return;
+        };
+        let archive = StormArchiveSource::open(&War3ArchivePaths {
+            base,
+            expansion: std::env::var_os("MDLVIS_TEST_WAR3X_MPQ").map(PathBuf::from),
+            patch: std::env::var_os("MDLVIS_TEST_WAR3PATCH_MPQ").map(PathBuf::from),
+        })
+        .expect("configured MPQs open");
+        for relative in [
+            "Nether Blast/Nether Blast I.mdx",
+            "Ember Forge  Ember Knight/Ember Forge_opt2.mdx",
+        ] {
+            let model = tracked(relative);
+            let mut resolver = SceneTextureResolver::new(ViewerTextureSource {
+                local: ModelTextureSource::new(
+                    &Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("test-data")
+                        .join(relative),
+                )
+                .unwrap(),
+                archive: Some(archive.clone()),
+                fatal_error: None,
+            });
+            let scene =
+                prepare_model_cpu_scene(&model, tracked_frame(&model), &mut resolver, [1.0, 0.0, 0.0])
+                    .unwrap();
+            for (request, texture) in scene.packet.textures.iter().zip(&scene.textures) {
+                if request.replaceable_id == 1 || request.replaceable_id == 2 {
+                    continue;
+                }
+                match &texture.origin {
+                    crate::texture::scene::TextureOrigin::Decoded { canonical_path } => {
+                        eprintln!(
+                            "{relative} decoded {} {}x{}",
+                            canonical_path, texture.width, texture.height
+                        );
+                    }
+                    crate::texture::scene::TextureOrigin::GeneratedTeamColor
+                    | crate::texture::scene::TextureOrigin::GeneratedTeamGlow => {}
+                    crate::texture::scene::TextureOrigin::Fallback {
+                        canonical_path,
+                        reason,
+                    } => {
+                        panic!("{relative} fallback {canonical_path:?} {reason:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn failed_generation_does_not_replace_active_generation() {
         let mut state = IntegrationState::default();
         let first = state.begin_load();
