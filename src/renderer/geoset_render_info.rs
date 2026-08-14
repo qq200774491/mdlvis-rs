@@ -31,6 +31,8 @@ pub(crate) struct ScenePipelineState {
     pub cull_back: bool,
 }
 
+pub(crate) const SCENE_FRONT_FACE: wgpu::FrontFace = wgpu::FrontFace::Cw;
+
 impl ScenePipelineState {
     pub(crate) fn from_scene(filter: SceneFilterMode, state: SceneRenderState) -> Self {
         let (blend, alpha_cutoff, filter_depth_write) = match filter {
@@ -61,6 +63,10 @@ impl ScenePipelineState {
             depth_always: state.no_depth_test,
             cull_back: !state.two_sided,
         }
+    }
+
+    pub(crate) fn cull_mode(self) -> Option<wgpu::Face> {
+        self.cull_back.then_some(wgpu::Face::Back)
     }
 }
 

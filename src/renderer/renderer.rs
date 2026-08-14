@@ -4,7 +4,7 @@ use crate::model::model::Model;
 use crate::model::texture::Texture;
 use crate::renderer::camera::CameraState;
 use crate::renderer::geoset_render_info::{
-    GeosetRenderInfo, PreparedDraw, ScenePipelineState, pass_rank,
+    GeosetRenderInfo, PreparedDraw, SCENE_FRONT_FACE, ScenePipelineState, pass_rank,
 };
 use crate::renderer::line_vertex::LineVertex;
 use crate::renderer::vertex::{Vertex, prepare_draw_vertices, texture_matrix};
@@ -1281,8 +1281,8 @@ fn create_scene_pipeline(
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
-            front_face: wgpu::FrontFace::Cw,
-            cull_mode: state.cull_back.then_some(wgpu::Face::Back),
+            front_face: SCENE_FRONT_FACE,
+            cull_mode: state.cull_mode(),
             polygon_mode: wgpu::PolygonMode::Fill,
             unclipped_depth: false,
             conservative: false,
@@ -2835,6 +2835,10 @@ mod scene_tests {
         }
     }
 
+    // Scene vertices flip model Y in `vs_scene`, so this source order reaches the
+    // rasterizer clockwise and is the front-facing order for the frozen pipeline.
+    const MODEL_TRIANGLE_RENDER_CW: [u32; 3] = [0, 1, 2];
+
     fn mesh(geoset: u32, center: [f32; 3]) -> SceneMesh {
         SceneMesh {
             geoset: GeosetIndex(geoset),
@@ -2848,7 +2852,7 @@ mod scene_tests {
                 vec![[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]],
                 vec![[0.25, 0.5], [0.75, 0.5], [0.5, 0.75]],
             ],
-            triangles: vec![[0, 1, 2]],
+            triangles: vec![MODEL_TRIANGLE_RENDER_CW],
             bounds: SceneBounds {
                 min: [center[0] - 1.0, center[1], center[2]],
                 max: [center[0] + 1.0, center[1] + 1.0, center[2]],
@@ -2903,11 +2907,26 @@ mod scene_tests {
             positions: vec![[left, -0.9, 0.0], [right, -0.9, 0.0], [center_x, 0.9, 0.0]],
             normals: vec![[0.0, 0.0, 1.0]; 3],
             uv_sets: vec![vec![[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]]],
-            triangles: vec![[0, 1, 2]],
+            triangles: vec![MODEL_TRIANGLE_RENDER_CW],
             bounds: SceneBounds {
                 min: [left, -0.9, 0.0],
                 max: [right, 0.9, 0.0],
                 center: [center_x, 0.0, 0.0],
+            },
+        }
+    }
+
+    fn asymmetric_triangle_mesh(geoset: u32, triangle: [u32; 3]) -> SceneMesh {
+        SceneMesh {
+            geoset: GeosetIndex(geoset),
+            positions: vec![[-0.8, -0.7, 0.0], [0.7, -0.5, 0.0], [-0.2, 0.8, 0.0]],
+            normals: vec![[0.0, 0.0, 1.0]; 3],
+            uv_sets: vec![vec![[0.0, 0.0], [0.4, 1.0], [1.0, 0.1]]],
+            triangles: vec![triangle],
+            bounds: SceneBounds {
+                min: [-0.8, -0.7, 0.0],
+                max: [0.7, 0.8, 0.0],
+                center: [-0.1, 0.05, 0.0],
             },
         }
     }
@@ -2990,6 +3009,7 @@ mod scene_tests {
 
     #[test]
     fn cross_product_render_flags_override_depth_and_culling() {
+        assert_eq!(SCENE_FRONT_FACE, wgpu::FrontFace::Cw);
         for filter in [SceneFilterMode::None, SceneFilterMode::Blend] {
             for two_sided in [false, true] {
                 for no_depth_test in [false, true] {
@@ -3004,6 +3024,7 @@ mod scene_tests {
                             },
                         );
                         assert_eq!(state.cull_back, !two_sided);
+                        assert_eq!(state.cull_mode(), (!two_sided).then_some(wgpu::Face::Back));
                         assert_eq!(state.depth_always, no_depth_test);
                         assert_eq!(
                             state.depth_write,
@@ -3685,6 +3706,46 @@ mod scene_tests {
         }
         assert_eq!(first.adapter, second.adapter);
         assert_eq!(first.rgba, second.rgba);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires frozen RTX 3060 DX12 G3 adapter"]
+    async fn offscreen_frozen_rtx3060_dx12_respects_cw_culling() {
+        let options = OffscreenSceneOptions {
+            width: 65,
+            height: 65,
+            clear: [0.0, 0.0, 0.0, 1.0],
+            ..Default::default()
+        };
+        let clockwise = packet(
+            vec![asymmetric_triangle_mesh(0, MODEL_TRIANGLE_RENDER_CW)],
+            vec![opaque_unshaded_draw(0, 0)],
+        );
+        let clockwise_result = render_scene_offscreen(offscreen_input(&clockwise), options)
+            .await
+            .unwrap();
+        assert_eq!(pixel(&clockwise_result, 32, 32), [255, 255, 255, 255]);
+
+        let counter_clockwise = packet(
+            vec![asymmetric_triangle_mesh(0, [0, 2, 1])],
+            vec![opaque_unshaded_draw(0, 0)],
+        );
+        let counter_clockwise_result =
+            render_scene_offscreen(offscreen_input(&counter_clockwise), options)
+                .await
+                .unwrap();
+        assert_eq!(pixel(&counter_clockwise_result, 32, 32), [0, 0, 0, 255]);
+
+        let mut two_sided_draw = opaque_unshaded_draw(0, 0);
+        two_sided_draw.render_state.two_sided = true;
+        let two_sided = packet(
+            vec![asymmetric_triangle_mesh(0, [0, 2, 1])],
+            vec![two_sided_draw],
+        );
+        let two_sided_result = render_scene_offscreen(offscreen_input(&two_sided), options)
+            .await
+            .unwrap();
+        assert_eq!(pixel(&two_sided_result, 32, 32), [255, 255, 255, 255]);
     }
 
     #[tokio::test]
