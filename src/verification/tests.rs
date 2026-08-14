@@ -1,4 +1,4 @@
-use super::{dump_structure, inspect_mdx, Count, InspectError};
+use super::{Count, InspectError, dump_structure, inspect_mdx};
 use crate::error::MdlError;
 use crate::parser::load::load;
 use crate::parser::write::save_path;

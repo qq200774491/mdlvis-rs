@@ -146,7 +146,9 @@ mod tests {
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_locale<T>(tag: &str, f: impl FnOnce() -> T) -> T {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         set_locale(tag);
         let result = f();
         set_locale(DEFAULT_LOCALE);

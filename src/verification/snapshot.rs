@@ -1,6 +1,6 @@
 use crate::model::model::Model;
 use crate::parser::load::load;
-use crate::verification::inspect::{inspect_mdx, InspectError, MdxInspection};
+use crate::verification::inspect::{InspectError, MdxInspection, inspect_mdx};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::Path;

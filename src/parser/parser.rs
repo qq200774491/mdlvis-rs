@@ -7,8 +7,8 @@ use crate::model::objects::{LayerRef, MaterialFlags, TextureFlags};
 use crate::model::skeleton::{Bone, Helper};
 use crate::model::texture::Texture;
 use crate::parser::io::{
-    read_controller, read_first_controller, read_vec3, TAG_KATV, TAG_KGRT, TAG_KGSC, TAG_KGTR,
-    TAG_KLAV,
+    TAG_KATV, TAG_KGRT, TAG_KGSC, TAG_KGTR, TAG_KLAV, read_controller, read_first_controller,
+    read_vec3,
 };
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::fs::File;

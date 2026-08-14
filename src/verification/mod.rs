@@ -6,7 +6,7 @@
 mod inspect;
 mod snapshot;
 
-pub use inspect::{inspect_mdx, InspectError};
-pub use snapshot::{dump_structure, Count};
+pub use inspect::{InspectError, inspect_mdx};
+pub use snapshot::{Count, dump_structure};
 
 mod tests;
