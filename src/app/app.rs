@@ -53,8 +53,10 @@ mod integration_tests {
     use crate::animation::types::{FrameContext, PlaybackMode};
     use crate::model::ids::TextureIndex;
     use crate::scene::SceneTextureRequest;
+    use sha2::{Digest, Sha256};
     use std::collections::BTreeMap;
     use std::ffi::OsString;
+    use std::io::{BufWriter, Read};
     use std::sync::{Arc, Mutex};
 
     static ARCHIVE_ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -442,21 +444,41 @@ mod integration_tests {
         };
         use crate::verification::dump_structure;
 
-        let base = std::env::var_os("MDLVIS_TEST_WAR3_MPQ")
-            .map(PathBuf::from)
-            .expect("set MDLVIS_TEST_WAR3_MPQ for the fixed G3 environment");
         let code_sha = std::env::var("MDLVIS_G3_EVIDENCE_SHA")
             .expect("set MDLVIS_G3_EVIDENCE_SHA to the exact commit under test");
-        let archive = StormArchiveSource::open(&War3ArchivePaths {
-            base,
+        assert!(
+            code_sha.len() == 40 && code_sha.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "MDLVIS_G3_EVIDENCE_SHA must be one full hexadecimal commit SHA"
+        );
+        let archive_paths = War3ArchivePaths {
+            base: std::env::var_os("MDLVIS_TEST_WAR3_MPQ")
+                .map(PathBuf::from)
+                .expect("set MDLVIS_TEST_WAR3_MPQ for the fixed G3 environment"),
             expansion: std::env::var_os("MDLVIS_TEST_WAR3X_MPQ").map(PathBuf::from),
             patch: std::env::var_os("MDLVIS_TEST_WAR3PATCH_MPQ").map(PathBuf::from),
+        };
+        let archive_manifest = [
+            ("base", Some(&archive_paths.base)),
+            ("expansion", archive_paths.expansion.as_ref()),
+            ("patch", archive_paths.patch.as_ref()),
+        ]
+        .into_iter()
+        .filter_map(|(role, path)| {
+            path.map(|path| {
+                let mut value = file_manifest(path);
+                value["role"] = role.into();
+                value
+            })
         })
-        .expect("configured MPQs open");
+        .collect::<Vec<_>>();
+        let archive = StormArchiveSource::open(&archive_paths).expect("configured MPQs open");
         let out = std::env::temp_dir()
             .join("mdlvis-g3-viewverify")
             .join(&code_sha)
             .join("rust");
+        if out.exists() {
+            std::fs::remove_dir_all(&out).expect("remove stale Rust G3 evidence directory");
+        }
         std::fs::create_dir_all(&out).unwrap();
 
         let samples = [
@@ -467,12 +489,15 @@ mod integration_tests {
                 &[1000_u32, 3000_u32][..],
             ),
         ];
+        let original_excentry = 1280.0_f32 / 721.0;
+        let y_scale = 0.00495_f32;
+        let x_scale = y_scale / original_excentry;
         let views = [
             (
                 "front",
                 [
-                    [0.0, -0.002784375, 0.0, 0.0],
-                    [0.0, 0.0, 0.00495, 0.0],
+                    [0.0, -x_scale, 0.0, 0.0],
+                    [0.0, 0.0, y_scale, 0.0],
                     [-0.00099, 0.0, 0.0, 0.5],
                     [0.0, 0.0, 0.0, 1.0],
                 ],
@@ -482,8 +507,8 @@ mod integration_tests {
             (
                 "back",
                 [
-                    [0.0, 0.002784375, 0.0, 0.0],
-                    [0.0, 0.0, 0.00495, 0.0],
+                    [0.0, x_scale, 0.0, 0.0],
+                    [0.0, 0.0, y_scale, 0.0],
                     [0.00099, 0.0, 0.0, 0.5],
                     [0.0, 0.0, 0.0, 1.0],
                 ],
@@ -493,159 +518,208 @@ mod integration_tests {
         ];
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let mut records = Vec::new();
+        let mut sample_manifest = Vec::new();
 
         for (sample, relative, frames) in samples {
             let path = Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("test-data")
                 .join(relative);
+            let mut sample_file = file_manifest(&path);
+            sample_file["sample"] = sample.into();
+            sample_file["model"] = relative.into();
+            sample_manifest.push(sample_file);
             let first = dump_structure(&path).expect("structure dump");
             let second = dump_structure(&path).expect("repeat structure dump");
             assert_eq!(first, second);
 
-            let model = tracked(relative);
             first
                 .to_pretty_json()
                 .unwrap()
                 .pipe_to_file(out.join(format!("{sample}.structure.json")));
 
-            for frame_number in frames {
-                for (view, row_major_view_proj, right, forward) in views {
-                    let frame = FrameContext {
-                        sequence: Some(0),
-                        sequence_time: f64::from(*frame_number),
-                        global_time: 0.0,
-                        playback: PlaybackMode::Clamp,
-                        view: Some(crate::animation::types::ViewFrame {
-                            position: [0.0; 3],
-                            right,
-                            up: [0.0, 0.0, 1.0],
-                            forward,
-                        }),
-                    };
-                    let pose_a = crate::animation::evaluate_pose(&model, frame).unwrap();
-                    let pose_b = crate::animation::evaluate_pose(&model, frame).unwrap();
-                    assert_eq!(pose_a.nodes, pose_b.nodes);
+            for phase in ["open", "reopen"] {
+                let model = tracked(relative);
+                let phase_structure = dump_structure(&path).expect("phase structure dump");
+                assert_eq!(first, phase_structure, "{sample} changed after {phase}");
 
-                    let mut resolver = SceneTextureResolver::new(ViewerTextureSource {
-                        local: ModelTextureSource::new(&path).unwrap(),
-                        archive: Some(archive.clone()),
-                        fatal_error: None,
-                    });
-                    let scene =
-                        prepare_model_cpu_scene(&model, frame, &mut resolver, [1.0, 0.0, 0.0])
-                            .expect("cpu scene");
-                    let decoded = scene
-                        .textures
-                        .iter()
-                        .filter(|texture| {
-                            matches!(
-                                texture.origin,
-                                crate::texture::scene::TextureOrigin::Decoded { .. }
-                            )
-                        })
-                        .count();
-                    let fallback = scene
-                        .textures
-                        .iter()
-                        .filter(|texture| {
-                            matches!(
-                                texture.origin,
-                                crate::texture::scene::TextureOrigin::Fallback { .. }
-                            )
-                        })
-                        .count();
-                    assert_eq!(fallback, 0, "{relative} still has texture fallbacks");
-                    let draw_alpha = scene
-                        .packet
-                        .draws
-                        .iter()
-                        .map(|draw| {
-                            serde_json::json!({
-                                "source_ordinal": draw.source_ordinal,
-                                "geoset": draw.geoset.0,
-                                "layer": draw.layer,
-                                "geoset_alpha": draw.geoset_alpha,
-                                "layer_alpha": draw.layer_alpha,
-                                "combined_alpha": draw.geoset_alpha * draw.layer_alpha,
-                                "filter": format!("{:?}", draw.filter_mode),
+                for frame_number in frames {
+                    for (view, row_major_view_proj, right, forward) in views.iter().copied() {
+                        let frame = FrameContext {
+                            sequence: Some(0),
+                            sequence_time: f64::from(*frame_number),
+                            global_time: 0.0,
+                            playback: PlaybackMode::Clamp,
+                            view: Some(crate::animation::types::ViewFrame {
+                                position: [0.0; 3],
+                                right,
+                                up: [0.0, 0.0, 1.0],
+                                forward,
+                            }),
+                        };
+                        let pose_a = crate::animation::evaluate_pose(&model, frame).unwrap();
+                        let pose_b = crate::animation::evaluate_pose(&model, frame).unwrap();
+                        assert_eq!(pose_a.nodes, pose_b.nodes);
+
+                        let mut resolver = SceneTextureResolver::new(ViewerTextureSource {
+                            local: ModelTextureSource::new(&path).unwrap(),
+                            archive: Some(archive.clone()),
+                            fatal_error: None,
+                        });
+                        let scene =
+                            prepare_model_cpu_scene(&model, frame, &mut resolver, [1.0, 0.0, 0.0])
+                                .expect("cpu scene");
+                        let decoded = scene
+                            .textures
+                            .iter()
+                            .filter(|texture| {
+                                matches!(
+                                    texture.origin,
+                                    crate::texture::scene::TextureOrigin::Decoded { .. }
+                                )
                             })
-                        })
-                        .collect::<Vec<_>>();
-                    let clear = srgb_to_linear(0.8);
-
-                    let options = OffscreenSceneOptions {
-                        width: 1280,
-                        height: 720,
-                        view_proj: wgpu_uniform_matrix(row_major_view_proj),
-                        eye: [0.0; 3],
-                        forward,
-                        clear: [clear, clear, clear, 1.0],
-                    };
-                    let mut rgba = None;
-                    let mut adapter = None;
-                    for repeat in 1..=2 {
-                        let rendered = runtime
-                            .block_on(render_scene_offscreen(
-                                OffscreenSceneInput {
-                                    packet: &scene.packet,
-                                    textures: &scene.textures,
-                                },
-                                options,
-                            ))
-                            .expect("offscreen render");
-                        assert_eq!((rendered.width, rendered.height), (1280, 720));
-                        assert_eq!(rendered.adapter.backend, wgpu::Backend::Dx12);
-                        if let Some(expected) = &rgba {
-                            assert_eq!(expected, &rendered.rgba);
-                        } else {
-                            rgba = Some(rendered.rgba.clone());
-                            adapter = Some(rendered.adapter.clone());
+                            .count();
+                        let fallback = scene
+                            .textures
+                            .iter()
+                            .filter(|texture| {
+                                matches!(
+                                    texture.origin,
+                                    crate::texture::scene::TextureOrigin::Fallback { .. }
+                                )
+                            })
+                            .count();
+                        assert_eq!(fallback, 0, "{relative} still has texture fallbacks");
+                        let draw_alpha = scene
+                            .packet
+                            .draws
+                            .iter()
+                            .map(|draw| {
+                                serde_json::json!({
+                                    "source_ordinal": draw.source_ordinal,
+                                    "geoset": draw.geoset.0,
+                                    "layer": draw.layer,
+                                    "geoset_alpha": draw.geoset_alpha,
+                                    "layer_alpha": draw.layer_alpha,
+                                    "combined_alpha": draw.geoset_alpha * draw.layer_alpha,
+                                    "filter": format!("{:?}", draw.filter_mode),
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        let clear = srgb_to_linear(0.8);
+                        let options = OffscreenSceneOptions {
+                            width: 1280,
+                            height: 720,
+                            view_proj: wgpu_uniform_matrix(row_major_view_proj),
+                            eye: [0.0; 3],
+                            forward,
+                            clear: [clear, clear, clear, 1.0],
+                        };
+                        let mut rgba = None;
+                        let mut adapter = None;
+                        let mut pngs = Vec::new();
+                        for repeat in 1..=2 {
+                            let rendered = runtime
+                                .block_on(render_scene_offscreen(
+                                    OffscreenSceneInput {
+                                        packet: &scene.packet,
+                                        textures: &scene.textures,
+                                    },
+                                    options,
+                                ))
+                                .expect("offscreen render");
+                            assert_eq!((rendered.width, rendered.height), (1280, 720));
+                            assert_eq!(rendered.adapter.backend, wgpu::Backend::Dx12);
+                            if let Some(expected) = &rgba {
+                                assert_eq!(expected, &rendered.rgba);
+                            } else {
+                                rgba = Some(rendered.rgba.clone());
+                                adapter = Some(rendered.adapter.clone());
+                            }
+                            let stem = format!(
+                                "{sample}-seq0-frame{frame_number}-{view}-{phase}-r{repeat}-fullview"
+                            );
+                            let png_path = out.join(format!("{stem}.png"));
+                            write_png_rgba8(
+                                &png_path,
+                                rendered.width,
+                                rendered.height,
+                                &rendered.rgba,
+                            )
+                            .expect("write lossless PNG");
+                            let mut png = file_manifest(&png_path);
+                            png["repeat"] = repeat.into();
+                            pngs.push(png);
                         }
-                        let stem =
-                            format!("{sample}-seq0-frame{frame_number}-{view}-r{repeat}-fullview");
-                        write_bmp888(
-                            out.join(format!("{stem}.bmp")),
-                            rendered.width,
-                            rendered.height,
-                            &rendered.rgba,
-                        )
-                        .unwrap();
-                    }
 
-                    let rgba = rgba.unwrap();
-                    let adapter = adapter.unwrap();
-                    records.push(serde_json::json!({
-                        "sample": sample,
-                        "model": relative,
-                        "sequence": 0,
-                        "frame": frame_number,
-                        "view": view,
-                        "repeats": 2,
-                        "width": 1280,
-                        "height": 720,
-                        "rgba_fnv1a64": fnv1a64(&rgba),
-                        "decoded": decoded,
-                        "fallback": fallback,
-                        "draw_alpha": draw_alpha,
-                        "adapter": adapter.name,
-                        "driver": adapter.driver,
-                        "driver_info": adapter.driver_info,
-                        "backend": format!("{:?}", adapter.backend),
-                    }));
-                    eprintln!("G3 recapture wrote {sample} frame {frame_number} {view}");
+                        let rgba = rgba.unwrap();
+                        let adapter = adapter.unwrap();
+                        records.push(serde_json::json!({
+                            "sample": sample,
+                            "model": relative,
+                            "phase": phase,
+                            "sequence": 0,
+                            "frame": frame_number,
+                            "view": view,
+                            "repeats": 2,
+                            "width": 1280,
+                            "height": 720,
+                            "rgba_fnv1a64": fnv1a64(&rgba),
+                            "rgba_sha256": sha256_bytes(&rgba),
+                            "pngs": pngs,
+                            "decoded": decoded,
+                            "fallback": fallback,
+                            "draw_alpha": draw_alpha,
+                            "adapter": adapter.name,
+                            "driver": adapter.driver,
+                            "driver_info": adapter.driver_info,
+                            "backend": format!("{:?}", adapter.backend),
+                        }));
+                        eprintln!(
+                            "G3 recapture wrote {sample} {phase} frame {frame_number} {view}"
+                        );
+                    }
                 }
             }
         }
 
         let report = serde_json::json!({
-            "schema": "mdlvis-g3-rust-capture-v1",
-            "code_sha": code_sha,
-            "drawable": { "width": 1280, "height": 720 },
+            "schema": "mdlvis-g3-rust-manifest-v1",
+            "program": {
+                "git_sha": code_sha,
+                "crate_version": env!("CARGO_PKG_VERSION"),
+                "profile": if cfg!(debug_assertions) { "debug" } else { "release" },
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH,
+            },
+            "samples": sample_manifest,
+            "archives": archive_manifest,
+            "drawable": {
+                "client_width": 1280,
+                "client_height": 720,
+                "original_vcl_width": 1280,
+                "original_vcl_height": 721,
+                "original_excentry": original_excentry,
+            },
             "clear_rgba8": [204, 204, 204, 255],
             "clear_linear": [srgb_to_linear(0.8), srgb_to_linear(0.8), srgb_to_linear(0.8), 1.0],
             "sequence": 0,
             "playback": "clamp",
             "global_time": 0,
+            "lifecycle": { "phases": ["open", "reopen"], "repeats_per_slot": 2 },
+            "display": {
+                "view_type": "full_view",
+                "xy_grid": false,
+                "xz_grid": false,
+                "yz_grid": false,
+                "axes": false,
+                "vertices": false,
+                "normals": false,
+                "bones": false,
+                "attachments": false,
+                "particles": false,
+                "skeleton": false,
+                "lighting": true,
+            },
             "camera_contract": {
                 "front": {
                     "cpu_sort_eye": [0.0, 0.0, 0.0],
@@ -661,7 +735,7 @@ mod integration_tests {
             "records": records,
         });
         std::fs::write(
-            out.join("capture.json"),
+            out.join("manifest.json"),
             serde_json::to_vec_pretty(&report).unwrap(),
         )
         .unwrap();
@@ -695,34 +769,47 @@ mod integration_tests {
         }
     }
 
-    fn write_bmp888(path: PathBuf, width: u32, height: u32, rgba: &[u8]) -> std::io::Result<()> {
-        use std::io::Write;
-        let row_stride = width * 3;
-        let padding = (4 - (row_stride % 4)) % 4;
-        let pixel_size = (row_stride + padding) * height;
-        let file_size = 54 + pixel_size;
-        let mut file = File::create(path)?;
-        file.write_all(b"BM")?;
-        file.write_all(&file_size.to_le_bytes())?;
-        file.write_all(&0u32.to_le_bytes())?;
-        file.write_all(&54u32.to_le_bytes())?;
-        file.write_all(&40u32.to_le_bytes())?;
-        file.write_all(&width.to_le_bytes())?;
-        file.write_all(&height.to_le_bytes())?;
-        file.write_all(&1u16.to_le_bytes())?;
-        file.write_all(&24u16.to_le_bytes())?;
-        file.write_all(&0u32.to_le_bytes())?;
-        file.write_all(&pixel_size.to_le_bytes())?;
-        file.write_all(&[0u8; 16])?;
-        let pad = [0u8; 3];
-        for y in (0..height).rev() {
-            let row = (y * width * 4) as usize;
-            for x in 0..width {
-                let i = row + (x * 4) as usize;
-                file.write_all(&[rgba[i + 2], rgba[i + 1], rgba[i]])?;
+    fn sha256_bytes(bytes: &[u8]) -> String {
+        format!("{:x}", Sha256::digest(bytes))
+    }
+
+    fn sha256_file(path: &Path) -> std::io::Result<String> {
+        let mut file = File::open(path)?;
+        let mut digest = Sha256::new();
+        let mut buffer = [0_u8; 1024 * 1024];
+        loop {
+            let read = file.read(&mut buffer)?;
+            if read == 0 {
+                break;
             }
-            file.write_all(&pad[..padding as usize])?;
+            digest.update(&buffer[..read]);
         }
+        Ok(format!("{:x}", digest.finalize()))
+    }
+
+    fn file_manifest(path: &Path) -> serde_json::Value {
+        let canonical = path.canonicalize().expect("canonical evidence file");
+        let metadata = canonical.metadata().expect("evidence file metadata");
+        serde_json::json!({
+            "path": canonical.display().to_string(),
+            "size": metadata.len(),
+            "sha256": sha256_file(&canonical).expect("hash evidence file"),
+        })
+    }
+
+    fn write_png_rgba8(
+        path: &Path,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        assert_eq!(rgba.len(), width as usize * height as usize * 4);
+        let mut encoder = png::Encoder::new(BufWriter::new(File::create(path)?), width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header()?;
+        writer.write_image_data(rgba)?;
+        writer.finish()?;
         Ok(())
     }
 

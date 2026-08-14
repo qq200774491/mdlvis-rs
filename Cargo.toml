@@ -22,3 +22,7 @@ rfd = "0.15"
 fluent-templates = "0.13"
 unic-langid = "0.9"
 wow-mpq = "0.7.0"
+
+[dev-dependencies]
+png = "0.18.0"
+sha2 = "0.10.9"
